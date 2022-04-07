@@ -110,20 +110,21 @@ jobs:
       working-directory: ${{env.GITHUB_WORKSPACE}}
       run: |
         cd ..
-        echo dir QTBIN
-        dir %QTBIN%
-        echo dir Qt5_Dir
-        dir ${{env.Qt5_Dir}}
         set QTBIN=${{env.Qt5_Dir}}\bin
+        echo dir %QTBIN%
+        dir %QTBIN%
+        echo dir ${{env.Qt5_Dir}}
+        dir ${{env.Qt5_Dir}}
         set QMAKE=%QTBIN%\qmake.exe
         set LIBGIT2=%CD%\libgit2\build64
         set RELEASE_SCRIPT="release_script"
         cd fritzing-app
         %QMAKE% -r -tp vc phoenix.pro QMAKE_TARGET.arch=x86_64
-        run: msbuild phoenix.vcxproj /m /t:build /p:Configuration=Release
+        msbuild phoenix.vcxproj /m /t:build /p:Configuration=Release
         set DESTDIR=..\release64
         pushd %DESTDIR%
         set DESTDIR=%CD%
+        echo DESTDIR %DESTDIR%
         popd
         set RELEASE_NAME=%DESTDIR%\forzip\fritzing-64.2019.pc
         echo setting up deploy folder. ignore any "The system cannot find ..." messages
