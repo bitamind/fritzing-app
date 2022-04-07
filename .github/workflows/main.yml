@@ -44,6 +44,9 @@ jobs:
         ref: develop
         submodules: recursive
 
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v1.1
+
     # Runs a single command using the runners shell
     #- name: Run a one-line script
     #  run: echo Hello, world!
@@ -108,6 +111,7 @@ jobs:
       run: |
         cd ..
         set QTBIN=%CD%\${{env.QT_VERSION}}\msvc2019_64\bin
+        dir %QTBIN%
         set QMAKE=%QTBIN%\qmake.exe
         set LIBGIT2=%CD%\libgit2\build64
         set RELEASE_SCRIPT="release_script"
