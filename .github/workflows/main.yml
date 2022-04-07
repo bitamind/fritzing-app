@@ -24,7 +24,7 @@ env:
   BOOST_ROOT: ${{github.workspace}}
   BOOST_URL: https://sourceforge.net/projects/boost/files/boost/1.78.0/boost_1_78_0.7z/download
   LIBGIT2_URL: https://github.com/libgit2/libgit2/archive/refs/tags/v0.28.4.zip
-  QT_VERSION: 5.15.5
+  QT_VERSION: 5.15.2
 
 permissions:
   contents: read
