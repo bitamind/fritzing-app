@@ -1,0 +1,198 @@
+# This is a basic workflow to help you get started with Actions
+
+name: Build Fritzing main on Windows
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the develop branch
+  push:
+    branches: [ main ]
+  #pull_request:
+  #  branches: [ main ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+env:
+  # Path to the solution file relative to the root of the project.
+  SOLUTION_FILE_PATH: .
+
+  # Configuration type to build.
+  # You can convert this to a build matrix if you need coverage of multiple configuration types.
+  # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
+  BUILD_CONFIGURATION: Release
+  BOOST_VERSION: 1.85.0
+  BOOST_VERSION_: 1_85_0
+  #BOOST_EXROOT: ${{github.workspace}}/..
+  BOOST_URL: https://sourceforge.net/projects/boost/files/boost/1.85.0/boost_1_85_0.7z/download
+  NGSPICE_VERSION: 42
+  #NGSPICE_EXROOT: ${{ github.workspace }}/..
+  LIBGIT2_VERSION: 0.28.5
+  #LIBGIT2_EXROOT: ${{ github.workspace }}/..
+  QT_VERSION: 6.5.3
+  QT_ROOT: ${{github.workspace}}/../Qt
+  GITHUB_WORKSPACE: ${{github.workspace}}
+
+permissions:
+  contents: read
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build:
+    # The type of runner that the job will run on
+    runs-on: windows-2022
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v2
+
+    - uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: amd64
+
+    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+    - uses: actions/checkout@v4
+      with:
+        ref: develop
+        submodules: recursive
+
+    # Runs a single command using the runners shell
+    #- name: Run a one-line script
+    #  run: echo Hello, world!
+
+    # Runs a set of commands using the runners shell
+    #- name: Run a multi-line script
+    #  run: |
+    #    echo Add other actions to build,
+    #    echo test, and deploy your project.
+
+    - name: Set EXROOT
+      shell: bash
+      run: |
+        echo "BOOST_EXROOT=$(dirname ${GITHUB_WORKSPACE})" >> ${GITHUB_ENV}
+        echo "QT_EXROOT=$(dirname ${GITHUB_WORKSPACE})" >> ${GITHUB_ENV}
+        echo "NGSPICE_EXROOT=$(dirname ${GITHUB_WORKSPACE})" >> ${GITHUB_ENV}
+        echo "LIBGIT2_EXROOT=$(dirname ${GITHUB_WORKSPACE})" >> ${GITHUB_ENV}
+
+    #- name: Restore NuGet packages
+    #  working-directory: ${{env.GITHUB_WORKSPACE}}
+    #  run: nuget restore ${{env.SOLUTION_FILE_PATH}}
+
+    - name: Restore Boost cache
+      uses: actions/cache@v3
+      id: cache-boost
+      with:
+        path: ${{env.BOOST_EXROOT}}/boost_${{ env.BOOST_VERSION_ }}
+        key: boost-${{ runner.os }}-${{ env.BOOST_VERSION }}
+
+    - name: Install Boost
+      if: steps.cache-boost.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        if [ "${OS}" == "Windows_NT" ]; then
+          # fix up paths to be forward slashes consistently
+          BOOST_EXROOT=$(echo ${BOOST_EXROOT} | sed 's/\\/\//g')
+        fi
+        mkdir -p ${BOOST_EXROOT}
+        curl --progress-bar --location --output ${BOOST_EXROOT}/download.7z ${BOOST_URL}
+        7z -o${BOOST_EXROOT} x ${BOOST_EXROOT}/download.7z -y -bd
+        rm ${BOOST_EXROOT}/download.7z
+        cd ${BOOST_EXROOT}
+        #ls ${BOOST_EXROOT}
+        echo "BOOST_ROOT=${BOOST_EXROOT}/boost_${{ env.BOOST_VERSION_ }}" >> ${GITHUB_ENV}
+
+
+    #- name: Cache Qt
+    #  id: cache-qt
+    #  uses: actions/cache@v3  # not v2!
+    #  with:
+    #    path: ${{env.QT_ROOT}}
+    #    key: ${{ runner.os }}-${{env.QT_VERSION}}-QtCache
+
+    - name: Install Qt ${{env.QT_VERSION}}
+      if: steps.cache-qt.outputs.cache-hit != 'true'
+      uses: jurplel/install-qt-action@v4
+      with:
+        version: ${{env.QT_VERSION}}
+        host: 'windows'
+        target: 'desktop'
+        arch: 'win64_msvc2019_64'
+        modules: 'qt5compat qtserialport'
+        cached: ${{ steps.cache-qt.outputs.cache-hit }}
+
+    - name: Download prebuilt ngspice
+      env: 
+        NGSPICE_URL: https://sourceforge.net/projects/ngspice/files/ng-spice-rework/old-releases/${{ env.NGSPICE_VERSION }}/ngspice-${{ env.NGSPICE_VERSION }}_dll_64.7z/download
+      shell: bash
+      run: |
+        if [ "${OS}" == "Windows_NT" ]; then
+          # fix up paths to be forward slashes consistently
+          NGSPICE_EXROOT=$(echo ${NGSPICE_EXROOT} | sed 's/\\/\//g')
+        fi
+        #mkdir -p ${NGSPICE_EXROOT}
+        curl --progress-bar --location --output ${NGSPICE_EXROOT}/ngspice_dll.7z ${NGSPICE_URL}
+        7z -o${NGSPICE_EXROOT} x ${NGSPICE_EXROOT}/ngspice_dll.7z -y -bd
+        rm ${NGSPICE_EXROOT}/ngspice_dll.7z
+        cd ${NGSPICE_EXROOT}
+        mv Spice64_dll/ ngspice-${{ env.NGSPICE_VERSION }}/
+
+    - name: Restore libgit2 cache
+      uses: actions/cache@v3
+      id: cache-libgit2
+      with:
+        path: ${{env.LIBGIT2_EXROOT}}/libgit2
+        key: libgit2-${{ runner.os }}-${{ env.LIBGIT2_VERSION }}
+
+    - name: Build libgit2
+      if: steps.cache-libgit2.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        cd ${LIBGIT2_EXROOT}
+        git clone -b v${{ env.LIBGIT2_VERSION }} --depth 1 https://github.com/libgit2/libgit2
+        cd libgit2
+        cmake -S . -B build64 -G "Visual Studio 17 2022" -A x64 -DBUILD_CLAR=OFF
+        cmake --build build64 --config Release
+
+    - name: Update the translations files
+      shell: bash
+      run: |
+        lupdate -noobsolete phoenix.pro
+        lrelease -removeidentical phoenix.pro
+
+    - name: Build Fritzing
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      env:
+        PATH: "${{ env.WindowsSdkVerBinPath }}/x86;${{ env.PATH }}"
+      shell: cmd
+      run: |
+        call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+        qmake -o Makefile phoenix.pro QMAKE_TARGET.arch=x86_64 || exit /b 1
+        nmake release || exit /b 2
+        dir ..
+        dir ..\release64 /s
+
+    - name: Package artifact
+      shell: bash
+      run: |
+        mkdir Fritzing-${{ github.ref_name }} && cd "$_"
+        cp -pr -t ./ ../../release64/Fritzing.exe{,.manifest}
+        cp -pr -t ./ ../{translations,sketches,help}
+        cp -pr -t ./ ../{README.md,INSTALL.txt,license-openssl-ssleay.txt}
+        cp -pr -t ./ ../LICENSE{.CC-BY-SA,.GPL2,.GPL3}
+        cp -pr -t ./ ${LIBGIT2_EXROOT}/libgit2/build64/Release/git2.dll
+        cp -pr -t ./ ${Qt6_DIR}/bin/{Qt6Core5Compat.dll}
+        git clone --branch main --depth 1 https://github.com/fritzing/fritzing-parts.git
+        ./Fritzing.exe -pp ./fritzing-parts -db ./fritzing-parts/parts.db
+        ${Qt6_DIR}/bin/windeployqt6.exe Fritzing.exe
+        ls ${GITHUB_WORKSPACE}/..
+        ls -R ${GITHUB_WORKSPACE}
+        #7z a "Fritzing-${{ github.ref_name }}.7z" "Fritzing-${{ github.ref_name }}"
+
+    # Upload package: https://github.com/marketplace/actions/upload-artifact
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Fritzing-${{ github.ref_name }}-${{ runner.os }}
+        path: ${{ github.workspace }}/Fritzing-${{ github.ref_name }}
