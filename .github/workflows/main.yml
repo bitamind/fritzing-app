@@ -82,7 +82,6 @@ jobs:
       shell: bash
 
     - name: ls for Boost
-      working-directory: ${{env.GITHUB_WORKSPACE}}
       run: ls
 
     - name: Install Qt
@@ -94,25 +93,21 @@ jobs:
         dir: ${{env.GITHUB_WORKSPACE}}
 
     - name: ls for Qt
-      working-directory: ${{env.GITHUB_WORKSPACE}}
       run: ls
 
     - name: Build libgit2
-      working-directory: ${{env.GITHUB_WORKSPACE}}
       run: |
         git clone --depth 1 https://github.com/libgit2/libgit2 -b v0.28.5
-        mkdir build64
-        cd build64
+        mkdir libgit2/build64
+        cd libgit2/build64
         cmake .. -G "Visual Studio 16 2019" -A x64 -DBUILD_CLAR=OFF
         cmake --build . --config Release
       shell: bash
 
     - name: ls for libgit2
-      working-directory: ${{env.GITHUB_WORKSPACE}}
       run: ls
 
     - name: Update the translations files
-      working-directory: ${{env.GITHUB_WORKSPACE}}
       run: |
         lupdate -noobsolete phoenix.pro
         lrelease -removeidentical phoenix.pro
