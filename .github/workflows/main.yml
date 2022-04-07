@@ -24,7 +24,7 @@ env:
   BOOST_ROOT: ${{github.workspace}}
   BOOST_URL: https://sourceforge.net/projects/boost/files/boost/1.78.0/boost_1_78_0.7z/download
   LIBGIT2_URL: https://github.com/libgit2/libgit2/archive/refs/tags/v0.28.4.zip
-  QT_VERSION: 5.15.2
+  QT_VERSION: 5.12.7
 
 permissions:
   contents: read
@@ -34,7 +34,7 @@ jobs:
   # This workflow contains a single job called "build"
   build:
     # The type of runner that the job will run on
-    runs-on: windows-2019
+    runs-on: windows-2016
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -86,7 +86,6 @@ jobs:
       with:
         version: ${{env.QT_VERSION}}
         host: 'windows'
-        arch: 'win64_msvc2019_64'
 
     - name: Build libgit2
       run: |
@@ -94,7 +93,7 @@ jobs:
         git clone --depth 1 https://github.com/libgit2/libgit2 -b v0.28.5
         mkdir libgit2/build64
         cd libgit2/build64
-        cmake .. -G "Visual Studio 16 2019" -A x64 -DBUILD_CLAR=OFF
+        cmake .. -G "Visual Studio 15 2017" -A x64 -DBUILD_CLAR=OFF
         cmake --build . --config Release
       shell: bash
 
@@ -108,8 +107,8 @@ jobs:
       working-directory: ${{env.GITHUB_WORKSPACE}}
       run: |
         cd ..
-        set QTBIN=%CD%\${{env.QT_VERSION}}\msvc2019_64\bin
-        .\fritzing-app\tools\release_fritzing.bat 64 2019
+        set QTBIN=%CD%\${{env.QT_VERSION}}\msvc2017_64\bin
+        .\fritzing-app\tools\release_fritzing.bat 64 2017
 
     - name: ls for Build
       run: ls
