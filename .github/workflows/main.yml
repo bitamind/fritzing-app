@@ -21,7 +21,7 @@ env:
   # You can convert this to a build matrix if you need coverage of multiple configuration types.
   # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
   BUILD_CONFIGURATION: Release
-  BOOST_ROOT: ${{github.workspace}}\..\
+  BOOST_ROOT: ${{github.workspace}}\..
   BOOST_URL: https://sourceforge.net/projects/boost/files/boost/1.78.0/boost_1_78_0.7z/download
   LIBGIT2_URL: https://github.com/libgit2/libgit2/archive/refs/tags/v0.28.4.zip
   QT_VERSION: 5.15.2
@@ -82,7 +82,7 @@ jobs:
         mkdir -p $BOOST_ROOT
         curl --progress-bar --location --output $BOOST_ROOT/download.7z $BOOST_URL
         7z -o$BOOST_ROOT x $BOOST_ROOT/download.7z -y -bd
-        rm download.7z
+        rm $BOOST_ROOT/download.7z
       shell: bash
 
     - name: Cache Qt
