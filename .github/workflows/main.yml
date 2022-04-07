@@ -57,6 +57,10 @@ jobs:
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v1.1
 
+    - uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: amd64
+
     #- name: Restore NuGet packages
     #  working-directory: ${{env.GITHUB_WORKSPACE}}
     #  run: nuget restore ${{env.SOLUTION_FILE_PATH}}
@@ -81,11 +85,19 @@ jobs:
         rm download.7z
       shell: bash
 
+    - name: Cache Qt
+      id: cache-qt
+      uses: actions/cache@v1  # not v2!
+      with:
+        path: ../Qt
+        key: ${{ runner.os }}-QtCache
+
     - name: Install Qt
       uses: jurplel/install-qt-action@v2
       with:
         version: ${{env.QT_VERSION}}
         host: 'windows'
+        cached: ${{ steps.cache-qt.outputs.cache-hit }}
 
     - name: Build libgit2
       run: |
@@ -114,8 +126,8 @@ jobs:
         set LIBGIT2=%CD%\libgit2\build64
         set RELEASE_SCRIPT="release_script"
         cd fritzing-app
-        %QMAKE% -r -tp vc phoenix.pro QMAKE_TARGET.arch=x86_64
-        msbuild phoenix.vcxproj /m /t:build /p:Configuration=Release
+        %QMAKE% -o Makefile phoenix.pro QMAKE_TARGET.arch=x86_64 || exit /b 1
+        nmake release || exit /b 2
         pushd ..\release64
         set DESTDIR=%CD%
         echo DESTDIR %DESTDIR%
