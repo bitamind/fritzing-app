@@ -100,7 +100,7 @@ jobs:
     - name: Build libgit2
       working-directory: ${{env.GITHUB_WORKSPACE}}
       run: |
-        run: git clone --depth 1 https://github.com/libgit2/libgit2 -b v0.28.5
+        git clone --depth 1 https://github.com/libgit2/libgit2 -b v0.28.5
         mkdir build64
         cd build64
         cmake .. -G "Visual Studio 16 2019" -A x64 -DBUILD_CLAR=OFF
