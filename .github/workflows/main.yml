@@ -90,13 +90,10 @@ jobs:
         version: ${{env.QT_VERSION}}
         host: 'windows'
         arch: 'win64_msvc2019_64'
-        dir: ${{env.GITHUB_WORKSPACE}}
-
-    - name: ls for Qt
-      run: ls
 
     - name: Build libgit2
       run: |
+        cd ..
         git clone --depth 1 https://github.com/libgit2/libgit2 -b v0.28.5
         mkdir libgit2/build64
         cd libgit2/build64
@@ -105,7 +102,7 @@ jobs:
       shell: bash
 
     - name: ls for libgit2
-      run: ls
+      run: ls ..
 
     - name: Update the translations files
       run: |
@@ -115,10 +112,12 @@ jobs:
 
     - name: Build
       working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: set QTBIN=${{env.GITHUB_WORKSPACE}}\${{env.QT_VERSION}}\msvc2019_64\bin;.\tools\release_fritzing.bat 64 2019
+      run: |
+        cd ..
+        set QTBIN=%CD%\${{env.QT_VERSION}}\msvc2019_64\bin
+        .\tools\release_fritzing.bat 64 2019
 
     - name: ls for Build
-      working-directory: ${{env.GITHUB_WORKSPACE}}
       run: ls
 
     # Upload package: https://github.com/marketplace/actions/upload-artifact
