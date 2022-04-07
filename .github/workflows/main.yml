@@ -81,9 +81,6 @@ jobs:
         rm download.7z
       shell: bash
 
-    - name: ls for Boost
-      run: ls
-
     - name: Install Qt
       uses: jurplel/install-qt-action@v2
       with:
@@ -101,9 +98,6 @@ jobs:
         cmake --build . --config Release
       shell: bash
 
-    - name: ls for libgit2
-      run: ls ..
-
     - name: Update the translations files
       run: |
         lupdate -noobsolete phoenix.pro
@@ -115,7 +109,7 @@ jobs:
       run: |
         cd ..
         set QTBIN=%CD%\${{env.QT_VERSION}}\msvc2019_64\bin
-        .\tools\release_fritzing.bat 64 2019
+        .\fritzing-app\tools\release_fritzing.bat 64 2019
 
     - name: ls for Build
       run: ls
