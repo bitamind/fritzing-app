@@ -197,7 +197,7 @@ jobs:
         echo moving deploy to %RELEASE_NAME%
         move %DESTDIR%\deploy %RELEASE_NAME%
         echo create zip file
-        7z a "${{github.workspace}}\fritzing-64.windows.2019.zip" "%DESTDIR%\forzip"
+        7z a "${{github.workspace}}\fritzing-64.windows.2019.zip" "%RELEASE_NAME%"
       shell: cmd
 
     # Upload package: https://github.com/marketplace/actions/upload-artifact
