@@ -200,4 +200,4 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: Fritzing build
-        path: release64/forzip/
+        path: release64/
