@@ -1,0 +1,208 @@
+# This is a basic workflow to help you get started with Actions
+
+name: build
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the develop branch
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+env:
+  # Path to the solution file relative to the root of the project.
+  SOLUTION_FILE_PATH: .
+
+  # Configuration type to build.
+  # You can convert this to a build matrix if you need coverage of multiple configuration types.
+  # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
+  BUILD_CONFIGURATION: Release
+  BOOST_ROOT: ${{github.workspace}}\..
+  BOOST_URL: https://sourceforge.net/projects/boost/files/boost/1.78.0/boost_1_78_0.7z/download
+  LIBGIT2_URL: https://github.com/libgit2/libgit2/archive/refs/tags/v0.28.4.zip
+  QT_VERSION: 5.15.2
+  GITHUB_WORKSPACE: ${{github.workspace}}
+
+permissions:
+  contents: read
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build:
+    # The type of runner that the job will run on
+    runs-on: windows-2019
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+    - uses: actions/checkout@v3
+      with:
+        ref: develop
+        submodules: recursive
+
+    # Runs a single command using the runners shell
+    #- name: Run a one-line script
+    #  run: echo Hello, world!
+
+    # Runs a set of commands using the runners shell
+    #- name: Run a multi-line script
+    #  run: |
+    #    echo Add other actions to build,
+    #    echo test, and deploy your project.
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v1.1
+
+    - uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: amd64
+
+    #- name: Restore NuGet packages
+    #  working-directory: ${{env.GITHUB_WORKSPACE}}
+    #  run: nuget restore ${{env.SOLUTION_FILE_PATH}}
+
+    - name: Restore Boost cache
+      uses: actions/cache@v2
+      id: cache-boost
+      with:
+        path: ${{env.BOOST_ROOT}}
+        key: boost
+
+    - name: Install Boost
+      if: steps.cache-boost.outputs.cache-hit != 'true'
+      run: |
+        if [ "$OS" == "Windows_NT" ]; then
+          # fix up paths to be forward slashes consistently
+          BOOST_ROOT=$(echo $BOOST_ROOT | sed 's/\\/\//g')
+        fi
+        mkdir -p $BOOST_ROOT
+        curl --progress-bar --location --output $BOOST_ROOT/download.7z $BOOST_URL
+        7z -o$BOOST_ROOT x $BOOST_ROOT/download.7z -y -bd
+        rm $BOOST_ROOT/download.7z
+      shell: bash
+
+    - name: Cache Qt
+      id: cache-qt
+      uses: actions/cache@v1  # not v2!
+      with:
+        path: ../Qt
+        key: ${{ runner.os }}-QtCache
+
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v3
+      with:
+        version: ${{env.QT_VERSION}}
+        host: 'windows'
+        cached: ${{ steps.cache-qt.outputs.cache-hit }}
+
+    - name: Build libgit2
+      run: |
+        cd ..
+        git clone --depth 1 https://github.com/libgit2/libgit2 -b v0.28.5
+        mkdir libgit2/build64
+        cd libgit2/build64
+        cmake .. -G "Visual Studio 16 2019" -A x64 -DBUILD_CLAR=OFF
+        cmake --build . --config Release
+      shell: bash
+
+    - name: Update the translations files
+      run: |
+        lupdate -noobsolete phoenix.pro
+        lrelease -removeidentical phoenix.pro
+      shell: bash
+
+    - name: Build
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: |
+        cd ..
+        set QTBIN=%CD%\Qt\${{env.QT_VERSION}}\msvc2019_64\bin
+        echo dir %QTBIN%\..
+        dir %QTBIN%\..
+        set QMAKE=%QTBIN%\qmake.exe
+        set LIBGIT2=%CD%\libgit2\build64
+        set RELEASE_SCRIPT="release_script"
+        cd fritzing-app
+        %QMAKE% -o Makefile phoenix.pro QMAKE_TARGET.arch=x86_64 || exit /b 1
+        nmake release || exit /b 2
+        pushd ..\release64
+        set DESTDIR=%CD%
+        echo GITHUB_ENV %GITHUB_ENV%
+        popd
+        set RELEASE_NAME=%DESTDIR%\forzip\fritzing-64.2019.pc
+        echo setting up deploy folder. ignore any "The system cannot find ..." messages
+        rmdir %DESTDIR%\deploy /s /q
+        rmdir %DESTDIR%\forzip /s /q
+        if exist %RELEASE_NAME%.zip (
+          del %RELEASE_NAME%.zip
+        )
+        mkdir %DESTDIR%\deploy
+        mkdir %DESTDIR%\forzip
+        mkdir %DESTDIR%\deploy\platforms
+        mkdir %DESTDIR%\deploy\lib
+        mkdir %DESTDIR%\deploy\lib\imageformats
+        mkdir %DESTDIR%\deploy\lib\sqldrivers
+        mkdir %DESTDIR%\deploy\lib\printsupport
+        echo deploy folder ready.  any further "The system cannot find ..." messages represent signific ant problems with the script
+        echo.
+        echo copy qt libraries
+        copy %QTBIN%\libEGL.dll %DESTDIR%\deploy\libEGL.dll
+        copy %QTBIN%\libGLESv2.dll %DESTDIR%\deploy\libGLESv2.dll
+        copy %QTBIN%\Qt5Core.dll %DESTDIR%\deploy\Qt5Core.dll
+        copy %QTBIN%\Qt5Gui.dll %DESTDIR%\deploy\Qt5Gui.dll
+        copy %QTBIN%\Qt5Network.dll %DESTDIR%\deploy\Qt5Network.dll
+        copy %QTBIN%\Qt5PrintSupport.dll %DESTDIR%\deploy\Qt5PrintSupport.dll
+        copy %QTBIN%\Qt5Sql.dll %DESTDIR%\deploy\Qt5Sql.dll
+        copy %QTBIN%\Qt5Svg.dll %DESTDIR%\deploy\Qt5Svg.dll
+        copy %QTBIN%\Qt5Widgets.dll %DESTDIR%\deploy\Qt5Widgets.dll
+        copy %QTBIN%\Qt5Xml.dll %DESTDIR%\deploy\Qt5Xml.dll
+        copy %QTBIN%\Qt5SerialPort.dll %DESTDIR%\deploy\Qt5SerialPort.dll
+        xcopy /q %QTBIN%\icu*.dll %DESTDIR%\deploy /E  /I
+        copy %QTBIN%\..\plugins\imageformats\qjpeg.dll %DESTDIR%\deploy\lib\imageformats\qjpeg.dll
+        copy %QTBIN%\..\plugins\sqldrivers\qsqlite.dll %DESTDIR%\deploy\lib\sqldrivers\qsqlite.dll
+        copy %QTBIN%\..\plugins\platforms\qwindows.dll %DESTDIR%\deploy\platforms\qwindows.dll
+        copy %QTBIN%\..\plugins\printsupport\windowsprintersupport.dll  %DESTDIR%\deploy\lib\printsupport\windowsprintersupport.dll
+        echo copying git2.dll from %LIBGIT2%
+        copy %LIBGIT2%\Release\git2.dll  %DESTDIR%\deploy\git2.dll
+        echo copying sketches, translations, help, README, LICENSE
+        echo.
+        copy  %DESTDIR%\Fritzing.exe %DESTDIR%\deploy\Fritzing.exe
+        xcopy /q .\translations %DESTDIR%\deploy\translations /E  /I
+        xcopy /q .\sketches %DESTDIR%\deploy\sketches /E  /I
+        xcopy /q .\help %DESTDIR%\deploy\help /E  /I
+        copy .\README.md %DESTDIR%\deploy\README.md
+        copy .\INSTALL.txt %DESTDIR%\deploy\INSTALL.txt
+        copy .\LICENSE.GPL2 %DESTDIR%\deploy\LICENSE.GPL2
+        copy .\LICENSE.GPL3 %DESTDIR%\deploy\LICENSE.GPL3
+        copy .\LICENSE.CC-BY-SA %DESTDIR%\deploy\LICENSE.CC-BY-SA
+        echo removing empty translation files
+        echo.
+        del %DESTDIR%\deploy\translations\*.ts
+        set CURRENTDIR=%cd%
+        cd %DESTDIR%
+        cd deploy
+        git clone --branch main --depth 1 --single-branch https://github.com/fritzing/fritzing-parts.git
+        del /s placeholder.txt
+        cd translations
+        for /f "usebackq delims=;" %%A in (`dir /b *.qm`) do If %%~zA LSS 1024 del "%%A"
+        cd %CURRENTDIR%
+        echo run fritzing to create parts.db
+        %DESTDIR%\deploy\Fritzing.exe -pp %DESTDIR%\deploy\fritzing-parts -db %DESTDIR%\deploy\fritzing-parts\parts.db
+        echo #### DESTDIR ########################################################
+        dir %DESTDIR%
+        echo moving deploy to %RELEASE_NAME%
+        move %DESTDIR%\deploy %RELEASE_NAME%
+        echo create zip file
+        7z a "${{github.workspace}}\fritzing-64.windows.2019.zip" "%RELEASE_NAME%"
+      shell: cmd
+
+    # Upload package: https://github.com/marketplace/actions/upload-artifact
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: Fritzing build
+        path: fritzing-64.windows.2019.zip
