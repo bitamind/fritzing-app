@@ -270,6 +270,11 @@ jobs:
         cp -t include/QuaZip-Qt6-${{ env.QUAZIP_VERSION }}/quazip/ quazip/*.h
         cp -t lib/ build64/quazip/Release/*
 
+    #- name: patch Fritzing
+    #  shell: bash
+    #  run: |
+    #    sed -re '/#include <QtDebug>/i\#include <QSettings>\n#include <QCoreApplication>' -re '/originalMsgHandler =/i\	QString iniPath = QCoreApplication::applicationDirPath() + "/fritzing-settings.ini";\n	QSettings settings(iniPath, QSettings::IniFormat);' -i ./src/main.cpp
+
     - name: Build Fritzing
       env:
         PATH: "${{ env.WindowsSdkVerBinPath }}/x86;${{ env.PATH }}"
@@ -308,3 +313,23 @@ jobs:
       with:
         name: fritzing-${{ github.ref_name }}-${{ runner.os }}
         path: ${{ github.workspace }}/Fritzing-${{ github.ref_name }}
+
+    - name: Create release with gh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG: "actions-build"
+        FILE: "fritzing-${{ github.ref_name }}-${{ runner.os }}.7z"
+      shell: bash
+      run: |
+        7z a "$FILE" "Fritzing-${{ github.ref_name }}"
+        if gh release delete "${TAG}" --repo "${GITHUB_REPOSITORY}" --cleanup-tag --yes; then
+          echo "gh release delete ${TAG}"
+        else
+          echo "No existing release to delete"
+        fi
+        gh release create "${TAG}" "${FILE}" \
+          --title "actions-build" \
+          --notes "Automated build from GitHub Actions" \
+          --prerelease \
+          --target "${GITHUB_SHA}" \
+          --repo "${GITHUB_REPOSITORY}"
