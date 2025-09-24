@@ -23,7 +23,7 @@ along with Fritzing.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "firsttimehelpdialog.h"
 
-static FirstTimeHelpDialog * Singleton = NULL;
+static FirstTimeHelpDialog * Singleton = nullptr;
 static ViewLayer::ViewID TheViewID = ViewLayer::BreadboardView;
 static QHash<ViewLayer::ViewID, QString> TheTexts;
 
@@ -39,7 +39,7 @@ FirstTimeHelpDialog::FirstTimeHelpDialog(QWidget *parent)
 	m_label->setWordWrap(true);
 	m_label->setObjectName("firstTimeHelpDialogText");
 
-	QVBoxLayout * vLayout = new QVBoxLayout();
+	auto * vLayout = new QVBoxLayout();
 	vLayout->addWidget(m_label);
 
 	this->setLayout(vLayout);
@@ -54,7 +54,7 @@ FirstTimeHelpDialog::~FirstTimeHelpDialog()
 
 void FirstTimeHelpDialog::setViewID(ViewLayer::ViewID viewID) {
 	TheViewID = viewID;
-	if (Singleton) {
+	if (Singleton != nullptr) {
 		Singleton->m_label->setText(TheTexts.value(TheViewID, ""));
 	}
 }
@@ -71,9 +71,9 @@ void FirstTimeHelpDialog::hideFirstTimeHelp() {
 }
 
 void FirstTimeHelpDialog::cleanup() {
-	if (Singleton) {
+	if (Singleton != nullptr) {
 		delete Singleton;
-		Singleton = NULL;
+		Singleton = nullptr;
 	}
 }
 
@@ -137,7 +137,7 @@ void FirstTimeHelpDialog::init() {
 		TheTexts.insert(ViewLayer::PCBView, pcbText);
 	}
 
-	if (Singleton == NULL) {
+	if (Singleton == nullptr) {
 		Singleton = new FirstTimeHelpDialog();
 	}
 }

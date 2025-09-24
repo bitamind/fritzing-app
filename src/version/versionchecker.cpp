@@ -32,17 +32,18 @@ along with Fritzing.  If not, see <http://www.gnu.org/licenses/>.
 #include <QUrl>
 #include <QNetworkAccessManager>
 #include <QMutexLocker>
+#include <QRegularExpression>
 
 VersionChecker::VersionChecker() : QObject()
 {
-	m_networkReply = NULL;
+	m_networkReply = nullptr;
 	m_depth = 0;
 	m_inSummary = m_inUpdated = m_inTitle = m_inEntry = false;
 	m_ignoreInterimVersion.ok = m_ignoreMainVersion.ok = false;
 }
 
 VersionChecker::~VersionChecker() {
-	foreach (AvailableRelease * availableRelease, m_availableReleases) {
+	Q_FOREACH (AvailableRelease * availableRelease, m_availableReleases) {
 		delete availableRelease;
 	}
 
@@ -56,7 +57,7 @@ void VersionChecker::fetch()
 	m_xml.clear();
 	QUrl url(m_urlString);
 
-	QNetworkAccessManager * manager = new QNetworkAccessManager(this);
+	auto * manager = new QNetworkAccessManager(this);
 	connect(manager, SIGNAL(finished(QNetworkReply *)), this, SLOT(finished(QNetworkReply *)));
 	QNetworkRequest request = QNetworkRequest(url);
 	QNetworkReply * reply = manager->get(request);
@@ -72,16 +73,16 @@ void VersionChecker::finished(QNetworkReply * networkReply)
 		m_xml.addData(networkReply->readAll());
 		parseXml();
 		DebugDialog::debug("https check new version no error");
-		emit releasesAvailable();
+		Q_EMIT releasesAvailable();
 	}
 	else {
 		DebugDialog::debug(QString("http check new version error %1").arg(networkReply->errorString()));
-		emit httpError(networkReply->error());
+		Q_EMIT httpError(networkReply->error());
 	}
 
 	QMutexLocker locker(&m_networkReplyLock);
 	if (networkReply == m_networkReply) {
-		m_networkReply = NULL;
+		m_networkReply = nullptr;
 	}
 
 	networkReply->manager()->deleteLater();
@@ -151,7 +152,7 @@ void VersionChecker::parseXml()
 		}
 		else if (m_xml.isCharacters() && !m_xml.isWhitespace()) {
 			QString t = m_xml.text().toString();
-			t.replace(QRegExp("[\\s]+"), " ");
+			t.replace(QRegularExpression("[\\s]+"), " ");
 			//DebugDialog::debug(QString("%1%2").arg(QString((m_depth + 1) * 4, ' ')).arg(t));
 			if (m_inTitle) {
 				m_currentTitle = m_xml.text().toString();
@@ -164,8 +165,8 @@ void VersionChecker::parseXml()
 			}
 		}
 	}
-	if (m_xml.error() && m_xml.error() != QXmlStreamReader::PrematureEndOfDocumentError) {
-		emit xmlError(m_xml.error());
+	if ((m_xml.error() != 0u) && m_xml.error() != QXmlStreamReader::PrematureEndOfDocumentError) {
+		Q_EMIT xmlError(m_xml.error());
 		return;
 	}
 
@@ -208,7 +209,7 @@ void VersionChecker::parseEntry() {
 		}
 	}
 
-	AvailableRelease * availableRelease = new AvailableRelease();
+	auto * availableRelease = new AvailableRelease();
 	availableRelease->versionString = m_currentTitle;
 	availableRelease->link = m_currentLinkHref;
 	availableRelease->interim = interim;
@@ -224,8 +225,8 @@ const QList<AvailableRelease *> & VersionChecker::availableReleases()
 
 void VersionChecker::stop() {
 	if (m_networkReplyLock.tryLock(1)) {
-		if (m_networkReply) {
-			m_networkReply = NULL;
+		if (m_networkReply != nullptr) {
+			m_networkReply = nullptr;
 		}
 		m_networkReplyLock.unlock();
 	}

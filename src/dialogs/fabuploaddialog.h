@@ -3,6 +3,7 @@
 
 #include <QDialog>
 #include <QNetworkAccessManager>
+#include <QPixmap>
 
 namespace Ui {
 class FabUploadDialog;
@@ -15,18 +16,32 @@ class FabUploadDialog : public QDialog
 public:
 	explicit FabUploadDialog(QNetworkAccessManager* manager,
 							 QString filename,
-//							 double area,
-//							 double boardCount,
+							 double width,
+							 double height,
+							 int boardCount,
+							 const QString & boardTitle,
 							 QWidget *parent = nullptr);
 	~FabUploadDialog();
 
-private slots:
+	void setUploadButtonEnabled(bool enabled);
+public Q_SLOTS:
+
+	void setFabMessage(const QString& text);
+	void setFabIcon(const QPixmap& pixmap);
+
+	void onRequestFabInfoFinished();
+private Q_SLOTS:
 	void onUploadStarted();
 	void onUploadReady();
 
 private:
+	void requestFabInfo();
 	Ui::FabUploadDialog *ui;
+	QNetworkAccessManager *m_manager;
 
+	QString m_fabName;
+	void handleError(QNetworkReply *reply, const QString &message);
+	void setFabName(QString);
 };
 
 #endif // FABUPLOADDIALOG_H

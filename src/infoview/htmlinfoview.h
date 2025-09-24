@@ -47,6 +47,8 @@ struct PropThing {
 	QPointer<QVBoxLayout> m_layout;
 };
 
+class ScaledIconFrame;
+
 class TagLabel : public QLabel {
 	Q_OBJECT
 
@@ -64,7 +66,9 @@ public:
 	HtmlInfoView(QWidget * parent = 0);
 	~HtmlInfoView();
 
-	QSize sizeHint() const;
+	void resizeEvent(QResizeEvent *event) override;
+
+	QSize sizeHint() const override;
 	void setContent(const QString& html);
 
 	ItemBase *currentItem();
@@ -86,16 +90,12 @@ public:
 	void init(bool tinyMode);
 
 public:
-	static const int STANDARD_ICON_IMG_WIDTH;
-	static const int STANDARD_ICON_IMG_HEIGHT;
-
-	static void cleanup();
 	static QHash<QString, QString> getPartProperties(ModelPart * modelPart, ItemBase * itemBase, bool wantDebug, QStringList & keys);
 
-signals:
+Q_SIGNALS:
 	void clickObsoleteSignal();
 
-protected slots:
+protected Q_SLOTS:
 	void setContent();
 	void setInstanceTitle();
 	void instanceTitleEnter();
@@ -136,15 +136,12 @@ protected:
 
 protected:
 	QPointer<ItemBase> m_currentItem;
-	bool m_currentSwappingEnabled;					// previous item (possibly hovered over)
+	bool m_currentSwappingEnabled = false;					// previous item (possibly hovered over)
 
 	QTimer m_setContentTimer;
 	QPointer<ItemBase> m_lastItemBase;
-	bool m_lastSwappingEnabled;						// previous item (selected)
+	bool m_lastSwappingEnabled = false;						// previous item (selected)
 	class FLineEdit * m_titleEdit;
-	QLabel * m_icon1;
-	QLabel * m_icon2;
-	QLabel * m_icon3;
 	QLabel * m_partTitle;
 	QLabel * m_partUrl;
 	QLabel * m_partVersion;
@@ -176,7 +173,7 @@ protected:
 	QVBoxLayout * m_layerLayout;
 	QList <PropThing *> m_propThings;
 	QPointer<ItemBase> m_pendingItemBase;
-	bool m_pendingSwappingEnabled;
+	bool m_pendingSwappingEnabled = false;
 	QWidget * m_layerWidget;
 	QDoubleSpinBox * m_xEdit;
 	QDoubleSpinBox * m_yEdit;
@@ -189,13 +186,18 @@ protected:
 	QString m_lastPartVersion;
 	ModelPart * m_lastSpiceModelPart;
 	ModelPart * m_lastTagsModelPart;
-	int m_lastConnectorItemCount;
+	int m_lastConnectorItemCount = 0;
 	ConnectorItem * m_lastConnectorItem;
 	ItemBase * m_lastIconItemBase;
 	ModelPart * m_lastPropsModelPart;
 	ItemBase * m_lastPropsItemBase;
-	bool m_lastPropsSwappingEnabled;
-	bool m_tinyMode;
+	bool m_lastPropsSwappingEnabled = false;
+	bool m_tinyMode = false;
+
+private:
+	ScaledIconFrame * m_iconFrame;
+	QSize m_lastSizeWithScrollbarsAlwaysOn;
+
 };
 
 #endif

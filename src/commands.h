@@ -45,7 +45,7 @@ public:
 	void emitUndo();
 	void emitRedo();
 
-signals:
+Q_SIGNALS:
 	void incUndo();
 	void incRedo();
 
@@ -125,7 +125,8 @@ private:
 class AddDeleteItemCommand : public SimulationCommand
 {
 public:
-	AddDeleteItemCommand(SketchWidget * sketchWidget, BaseCommand::CrossViewType, QString moduleID, ViewLayer::ViewLayerPlacement, ViewGeometry &, qint64 id, long modelIndex, QPointF *labelPos, QPointF *labelOffset, QUndoCommand *parent);
+	AddDeleteItemCommand(SketchWidget * sketchWidget, BaseCommand::CrossViewType, QString moduleID, ViewLayer::ViewLayerPlacement, ViewGeometry &, qint64 id, long modelIndex, QHash<QString, QString> * localConnectors, QUndoCommand *parent);
+	~AddDeleteItemCommand();
 
 	long itemID() const;
 	void setDropOrigin(SketchWidget *);
@@ -141,8 +142,7 @@ protected:
 	long m_modelIndex;
 	SketchWidget * m_dropOrigin;
 	ViewLayer::ViewLayerPlacement m_viewLayerPlacement;
-	QPointF *m_labelPos;
-	QPointF *m_labelOffset;
+	QHash<QString, QString> * m_localConnectors;
 };
 
 /////////////////////////////////////////////
@@ -169,7 +169,7 @@ protected:
 class DeleteItemCommand : public AddDeleteItemCommand
 {
 public:
-	DeleteItemCommand(SketchWidget *sketchWidget, BaseCommand::CrossViewType, QString moduleID, ViewLayer::ViewLayerPlacement, ViewGeometry &, qint64 id, long modelIndex, QPointF *labelPos, QPointF *labelOffset, QUndoCommand *parent);
+	DeleteItemCommand(SketchWidget *sketchWidget, BaseCommand::CrossViewType, QString moduleID, ViewLayer::ViewLayerPlacement, ViewGeometry &, qint64 id, long modelIndex, QHash<QString, QString>* localConnectors, QUndoCommand *parent);
 	void undo();
 	void redo();
 
@@ -277,12 +277,12 @@ protected:
 };
 
 /////////////////////////////////////////////
-class QMatrix;
+class QTransform;
 class TransformItemCommand : public SimulationCommand
 {
 
 public:
-	TransformItemCommand(SketchWidget *sketchWidget, long id, const QMatrix & oldMatrix, const class QMatrix & newMatrix, QUndoCommand *parent);
+	TransformItemCommand(SketchWidget *sketchWidget, long id, const QTransform & oldMatrix, const class QTransform & newMatrix, QUndoCommand *parent);
 	void undo();
 	void redo();
 
@@ -291,8 +291,8 @@ protected:
 
 protected:
 	long m_itemID;
-	QMatrix m_oldMatrix;
-	QMatrix m_newMatrix;
+	QTransform m_oldMatrix;
+	QTransform m_newMatrix;
 };
 
 /////////////////////////////////////////////
@@ -730,7 +730,7 @@ protected:
 class RestoreLabelCommand : public BaseCommand
 {
 public:
-	RestoreLabelCommand(class SketchWidget *sketchWidget, long id, QDomElement &, QUndoCommand *parent);
+	RestoreLabelCommand(class SketchWidget *sketchWidget, long id, QDomElement & oldLabelGeometry, QDomElement & newLabelGeometry, QUndoCommand *parent);
 	void undo();
 	void redo();
 
@@ -739,7 +739,24 @@ protected:
 
 protected:
 	long m_itemID;
-	QDomElement m_element;
+	QDomElement m_oldLabelGeometry;
+	QDomElement m_newLabelGeometry;
+};
+
+/////////////////////////////////////////////
+
+class CheckPartLabelLayerVisibilityCommand : public BaseCommand
+{
+public:
+	CheckPartLabelLayerVisibilityCommand(class SketchWidget *sketchWidget, long id, QUndoCommand *parent);
+	void undo();
+	void redo();
+
+protected:
+	QString getParamString() const;
+
+protected:
+	long m_itemID;
 };
 
 /////////////////////////////////////////////
@@ -1016,6 +1033,30 @@ protected:
 
 /////////////////////////////////////////////
 
+class ResizeLogoCommand : public BaseCommand
+{
+public:
+	ResizeLogoCommand(SketchWidget* sketchWidget, long itemID,
+					  double oldWidth, double oldHeight,
+					  double newWidth, double newHeight,
+					  const QString& logoProperty,
+					  QUndoCommand* parent = nullptr);
+
+	void undo() override;
+	void redo() override;
+	QString getParamString() const override;
+
+private:
+	long m_itemID;
+	double m_oldWidth;
+	double m_oldHeight;
+	double m_newWidth;
+	double m_newHeight;
+	QString m_logoProperty;
+};
+
+/////////////////////////////////////////////
+
 class ChangeBoardLayersCommand : public BaseCommand
 {
 public:
@@ -1053,7 +1094,7 @@ protected:
 class RenamePinsCommand : public BaseCommand
 {
 public:
-	RenamePinsCommand(class SketchWidget *sketchWidget, long id, const QStringList & oldOnes, const QStringList & newOnes, bool singleRow, QUndoCommand *parent);
+	RenamePinsCommand(class SketchWidget *sketchWidget, long id, const QStringList & oldOnes, const QStringList & newOnes, QUndoCommand *parent);
 	void undo();
 	void redo();
 
@@ -1064,7 +1105,6 @@ protected:
 	long m_itemID;
 	QStringList m_oldLabels;
 	QStringList m_newLabels;
-	bool m_singleRow;
 };
 
 /////////////////////////////////////////////
@@ -1081,7 +1121,9 @@ public:
 	GroundFillSeedCommand(class SketchWidget *sketchWidget, QUndoCommand *parent);
 	void undo();
 	void redo();
-	void addItem(long id, const QString & connectorID, bool seed);
+	void setSeedState(long id, const QString & connectorID, bool seed);
+	void addSeed(long id, const QString & connectorID);
+	void removeSeed(long id, const QString & connectorID);
 
 protected:
 	QString getParamString() const;
@@ -1156,6 +1198,23 @@ class AddSubpartCommand : public BaseCommand
 {
 public:
 	AddSubpartCommand(class SketchWidget *sketchWidget, CrossViewType crossView, long id, long subpartID, QUndoCommand *parent);
+	void undo();
+	void redo();
+
+protected:
+	QString getParamString() const;
+
+protected:
+	long m_itemID;
+	long m_subpartItemID;
+};
+
+/////////////////////////////////////////////
+
+class RemoveSubpartCommand : public BaseCommand
+{
+public:
+	RemoveSubpartCommand(class SketchWidget *sketchWidget, CrossViewType crossView, long id, long subpartID, QUndoCommand *parent);
 	void undo();
 	void redo();
 

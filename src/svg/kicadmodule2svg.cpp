@@ -421,7 +421,7 @@ KicadModule2Svg::PadLayer KicadModule2Svg::convertPad(QTextStream & stream, QStr
 	QString attributes;
 	QString position;
 
-	foreach (QString string, padStrings) {
+	Q_FOREACH (QString string, padStrings) {
 		if (string.startsWith("Sh")) {
 			shape = string;
 		}
@@ -504,7 +504,7 @@ KicadModule2Svg::PadLayer KicadModule2Svg::convertPad(QTextStream & stream, QStr
 		padLayer = ToCopper1;
 	}
 	else if (padType == "CONN") {
-		if (layerMask & 1) {
+		if ((layerMask & 1) != 0) {
 			padLayer = ToCopper0;
 		}
 		else {

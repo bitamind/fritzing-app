@@ -1,59 +1,37 @@
-# Copyright (c) 2021 Fritzing GmbH
+# Copyright (c) 2021,2024 Fritzing GmbH
 
-message("Using fritzing quazip detect script.")
+message("Using Fritzing quazip detect script.")
+
+# We are currently using a quazip version from this PR:
+# https://github.com/stachenov/quazip/pull/199
+# Important:
+# Quazip is looking for additional maintainers and code reviewers. While the
+# library is # mostly feature complete, there are a couple of big ticket
+# issues that need # work. Code review is welcome for all pull requests.
+# If you are well versed in # Qt and C/C++ please start helping around
+# and check https://github.com/stachenov/quazip/issues/185
+QUAZIP_VERSION=1.4
+QUAZIP_PATH=$$absolute_path($$PWD/../../quazip-$$QT_VERSION-$$QUAZIP_VERSION)intuisphere
+QUAZIP_INCLUDE_PATH=$$QUAZIP_PATH/include/QuaZip-Qt6-$$QUAZIP_VERSION
+QUAZIP_LIB_PATH=$$QUAZIP_PATH/lib
 
 SOURCES += \
-    src/zlibdummy.c \
+	src/zlibdummy.c \
 
-exists($$absolute_path($$PWD/../../quazip_qt5)) {
-        QUAZIPPATH = $$absolute_path($$PWD/../../quazip_qt5)
-        message("found quazip in $${QUAZIPPATH}")
-    } else {
-        error("quazip could not be found.")
-    }
+exists($$QUAZIP_PATH) {
+		message("found quazip in $${QUAZIP_PATH}")
+	} else {
+		error("quazip could not be found at $$QUAZIP_PATH")
+	}
 
-message("including $$absolute_path($${QUAZIPPATH}/include/quazip)")
+INCLUDEPATH += $$QUAZIP_INCLUDE_PATH
+LIBS += -L$$QUAZIP_LIB_PATH -lquazip1-qt$$QT_MAJOR_VERSION
 
-unix:!macx {
-    message("including quazip library on linux")
-    INCLUDEPATH += $$absolute_path($${QUAZIPPATH}/include/quazip)
-    LIBS += -L$$absolute_path($${QUAZIPPATH}/lib) -lquazip1-qt5
-    QMAKE_RPATHDIR += $$absolute_path($${QUAZIPPATH}/lib)
+unix {
+	message("set rpath for quazip")
+	QMAKE_RPATHDIR += $$QUAZIP_LIB_PATH
 }
 
 macx {
-    message("including quazip library on mac os")
-    INCLUDEPATH += $$absolute_path($${QUAZIPPATH}/include/quazip)
-    LIBS += -L$$absolute_path($${QUAZIPPATH}/lib) -lquazip1-qt5
-    QMAKE_RPATHDIR += $$absolute_path($${QUAZIPPATH}/lib)
-    LIBS += -lz
-}
-
-win32 {
-
-    message("including quazip library on windows")
-
-    QUAZIPINCLUDE = $$absolute_path($${QUAZIPPATH}/include/quazip)
-    exists($$QUAZIPINCLUDE/quazip.h) {
-        message("found quazip include path at $$QUAZIPINCLUDE")
-    } else {
-        message("Fritzing requires quazip")
-        error("quazip include path not found in $$QUAZIPINCLUDE")
-    }
-
-    INCLUDEPATH += $$QUAZIPINCLUDE
-
-    contains(QMAKE_TARGET.arch, x86_64) {
-        QUAZIPLIB = $$absolute_path($$QUAZIPPATH/build64/Release)
-    } else {
-        QUAZIPLIB = $$absolute_path($$QUAZIPPATH/build32/Release)
-    }
-
-    exists($$QUAZIPLIB/quazip1-qt5.lib) {
-        message("found quazip library in $$QUAZIPLIB")
-    } else {
-        error("quazip library not found in $$QUAZIPLIB")
-    }
-
-    LIBS += -L$$QUAZIPLIB -lquazip1-qt5
+	LIBS += -lz
 }

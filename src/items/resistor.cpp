@@ -19,23 +19,16 @@ along with Fritzing.  If not, see <http://www.gnu.org/licenses/>.
 ********************************************************************/
 
 #include "resistor.h"
-#include "../utils/graphicsutils.h"
 #include "../utils/textutils.h"
 #include "../utils/focusoutcombobox.h"
 #include "../utils/boundedregexpvalidator.h"
-#include "../fsvgrenderer.h"
 #include "../sketch/infographicsview.h"
-#include "../svg/svgfilesplitter.h"
-#include "../commands.h"
 #include "../layerattributes.h"
-#include "moduleidnames.h"
 #include "partlabel.h"
 #include "../debugdialog.h"
-#include "../simulation/simulator.h"
-#include "../sketch/sketchwidget.h"
 
 #include <qmath.h>
-#include <QRegExpValidator>
+#include <QRegularExpressionValidator>
 
 static QStringList Resistances;
 static QHash<QString, QString> PinSpacings;
@@ -139,7 +132,7 @@ void Resistor::setResistance(QString resistance, QString pinSpacing, bool force)
 		if (force || pinSpacing.compare(m_pinSpacing) != 0) {
 
 			InfoGraphicsView * infoGraphicsView = InfoGraphicsView::getInfoGraphicsView(this);
-			if (infoGraphicsView == NULL) break;
+			if (infoGraphicsView == nullptr) break;
 
 			if (modelPart()->properties().value("package").compare("tht", Qt::CaseInsensitive) == 0)
 			{
@@ -170,7 +163,7 @@ void Resistor::setResistance(QString resistance, QString pinSpacing, bool force)
 	modelPart()->setLocalProp("tolerance", tolerance);
 
 	updateResistances(m_ohms);
-	if (m_partLabel) m_partLabel->displayTextsIf();
+	if (m_partLabel != nullptr) m_partLabel->displayTextsIf();
 }
 
 QString Resistor::retrieveSvg(ViewLayer::ViewLayerID viewLayerID, QHash<QString, QString> & svgHash, bool blackOnly, double dpi, double & factor)
@@ -209,6 +202,9 @@ QString Resistor::makeSvg(const QString & resistance, ViewLayer::ViewLayerID vie
 	QDomDocument domDocument;
 	QString fn = (viewLayerID == ViewLayer::Breadboard) ? m_breadboardSvgFile : m_iconSvgFile;
 	QFile file(fn);
+	if (!file.open(QIODevice::ReadOnly)) {
+		DebugDialog::debug(QString("Unable to open :%1").arg(fn));
+	}
 	if (!domDocument.setContent(&file, &errorStr, &errorLine, &errorColumn)) {
 		DebugDialog::debug(QString("makesvg failed %1 %2 %3").arg(errorStr).arg(errorLine).arg(errorColumn));
 		return "";
@@ -254,23 +250,20 @@ bool Resistor::collectExtraInfo(QWidget * parent, const QString & family, const 
 	if (prop.compare("resistance", Qt::CaseInsensitive) == 0) {
 		returnProp = tr("resistance");
 
-		FocusOutComboBox * focusOutComboBox = new FocusOutComboBox();
+		auto * focusOutComboBox = new FocusOutComboBox();
 		focusOutComboBox->setEnabled(swappingEnabled);
 		focusOutComboBox->setEditable(true);
 		QString current = m_ohms + OhmSymbol;
 		focusOutComboBox->addItems(Resistances);
 		focusOutComboBox->setCurrentIndex(focusOutComboBox->findText(current));
-		BoundedRegExpValidator * validator = new BoundedRegExpValidator(focusOutComboBox);
+		auto * validator = new BoundedRegExpValidator(focusOutComboBox);
 		validator->setSymbol(OhmSymbol);
 		validator->setConverter(TextUtils::convertFromPowerPrefix);
 		validator->setBounds(MIN_RESISTANCE, MAX_RESISTANCE);
-		QString pattern = QString("((\\d{0,10})|(\\d{0,10}\\.)|(\\d{0,10}\\.\\d{1,10}))[%1]{0,1}[%2]{0,1}")
-										  .arg(TextUtils::PowerPrefixesString)
-										  .arg(OhmSymbol);
-		validator->setRegExp(QRegExp(pattern));
+		validator->setRegularExpression(QRegularExpression(QString("((\\d{1,10})|(\\d{1,10}\\.)|(\\d{1,10}\\.\\d{1,5}))[\\x%1umkMG]{0,1}[\\x03A9]{0,1}").arg(TextUtils::MicroSymbolCode, 4, 16, QChar('0'))));
 		focusOutComboBox->setValidator(validator);
 		connect(focusOutComboBox->validator(), SIGNAL(sendState(QValidator::State)), this, SLOT(textModified(QValidator::State)));
-		connect(focusOutComboBox, SIGNAL(currentIndexChanged(const QString &)), this, SLOT(resistanceEntry(const QString &)));
+		connect(focusOutComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(resistanceEntry(int)));
 
 		focusOutComboBox->setObjectName("infoViewComboBox");
 		focusOutComboBox->setToolTip(tr("Select from the dropdown, or type in a %1 value\n"
@@ -312,7 +305,7 @@ QString Resistor::pinSpacing() {
 
 void Resistor::addedToScene(bool temporary)
 {
-	if (this->scene()) {
+	if (this->scene() != nullptr) {
 		setResistance(m_ohms, m_pinSpacing, true);
 	}
 
@@ -363,7 +356,7 @@ bool Resistor::canEditPart() {
 QStringList Resistor::collectValues(const QString & family, const QString & prop, QString & value) {
 	if (prop.compare("pin spacing", Qt::CaseInsensitive) == 0) {
 		QStringList values;
-		foreach (QString f, PinSpacings.keys()) {
+		Q_FOREACH (QString f, PinSpacings.keys()) {
 			values.append(f);
 		}
 		value = m_pinSpacing;
@@ -373,11 +366,15 @@ QStringList Resistor::collectValues(const QString & family, const QString & prop
 	return Capacitor::collectValues(family, prop, value);
 }
 
-void Resistor::resistanceEntry(const QString & text) {
+void Resistor::resistanceEntry(int index) {
+	auto * comboBox = qobject_cast<QComboBox *>(sender());
+	if (comboBox == nullptr) return;
 	//DebugDialog::debug(QString("resistance entry %1").arg(text));
 
+	QString text = comboBox->itemText(index);
+
 	InfoGraphicsView * infoGraphicsView = InfoGraphicsView::getInfoGraphicsView(this);
-	if (infoGraphicsView) {
+	if (infoGraphicsView != nullptr) {
 		infoGraphicsView->setResistance(text, "");
 	}
 }
@@ -413,4 +410,19 @@ ViewLayer::ViewID Resistor::useViewIDForPixmap(ViewLayer::ViewID vid, bool swapp
 	}
 
 	return ItemBase::useViewIDForPixmap(vid, swappingEnabled);
+}
+
+QHash<QString, QString> Resistor::prepareProps(ModelPart * modelPart, bool wantDebug, QStringList & keys)
+{
+	QHash<QString, QString> props = ItemBase::prepareProps(modelPart, wantDebug, keys);
+
+	// ensure resistance and other properties are after family;
+	if (keys.removeOne("resistance"))
+		keys.insert(1, "resistance");
+	if (keys.removeOne("tolerance"))
+		keys.insert(2, "tolerance");
+	if (keys.removeOne("power"))
+		keys.insert(3, "power");
+
+	return props;
 }

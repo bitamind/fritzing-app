@@ -33,6 +33,9 @@ QList <QString> PropertyDefMaster::ModuleIDSuffixes;
 
 void PropertyDefMaster::loadPropertyDefs() {
 	QFile file(":/resources/properties.xml");
+	if (!file.open(QIODevice::ReadOnly)) {
+		DebugDialog::debug(QString("Unable to open :%1").arg(":/resources/properties.xml"));
+	}
 
 	QString errorStr;
 	int errorLine;
@@ -50,7 +53,7 @@ void PropertyDefMaster::loadPropertyDefs() {
 
 	QDomElement propertyElement = root.firstChildElement("property");
 	while (!propertyElement.isNull()) {
-		PropertyDef * propertyDef = new PropertyDef;
+		auto * propertyDef = new PropertyDef;
 		propertyDef->name = propertyElement.attribute("name");
 
 		PropertyDefs.append(propertyDef);
@@ -90,7 +93,7 @@ void PropertyDefMaster::loadPropertyDefs() {
 }
 
 void PropertyDefMaster::cleanup() {
-	foreach (PropertyDef * propertyDef, PropertyDefs) {
+	Q_FOREACH (PropertyDef * propertyDef, PropertyDefs) {
 		delete propertyDef;
 	}
 
@@ -104,8 +107,8 @@ void PropertyDefMaster::initPropertyDefs(ModelPart * modelPart, QHash<PropertyDe
 		loadPropertyDefs();
 	}
 
-	foreach (PropertyDef * propertyDef, PropertyDefs) {
-		foreach (QString suffix, propertyDef->suffixes) {
+	Q_FOREACH (PropertyDef * propertyDef, PropertyDefs) {
+		Q_FOREACH (QString suffix, propertyDef->suffixes) {
 			if (!modelPart->moduleID().endsWith(suffix, Qt::CaseInsensitive)) continue;
 
 			//DebugDialog::debug(QString("%1 %2").arg(suffix).arg(modelPart->moduleID()));

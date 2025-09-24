@@ -21,7 +21,8 @@ along with Fritzing.  If not, see <http://www.gnu.org/licenses/>.
 #ifndef PARTLABEL_H
 #define PARTLABEL_H
 
-#include <QGraphicsSvgItem>
+#include <QtGlobal>
+#include <QtSvgWidgets/QGraphicsSvgItem>
 #include <QPainter>
 #include <QStyleOptionGraphicsItem>
 #include <QWidget>
@@ -33,14 +34,14 @@ along with Fritzing.  If not, see <http://www.gnu.org/licenses/>.
 #include <QTimer>
 #include <QMenu>
 
-#include "../viewlayer.h"
+#include "viewlayer.h"
 
 class ItemBase;
 class PartLabel : public QGraphicsSvgItem
 {
 	Q_OBJECT
 public:
-	PartLabel(ItemBase * owner, QWidget *parentWidget, QGraphicsItem * parent = 0 );   // itembase is not the parent
+	explicit PartLabel(ItemBase * owner, QWidget *parentWidget, QGraphicsItem * parent = 0 );   // itembase is not the parent
 	~PartLabel();
 
 	void setPlainText(const QString & text);
@@ -53,8 +54,10 @@ public:
 	void setInactive(bool inactivate);
 	constexpr bool inactive() const noexcept { return m_inactive; }
 	constexpr ViewLayer::ViewLayerID viewLayerID() const noexcept { return m_viewLayerID; }
-	void saveInstance(QXmlStreamWriter & streamWriter);
-	void restoreLabel(QDomElement & labelGeometry, ViewLayer::ViewLayerID);
+	bool isFlipped(ViewLayer::ViewLayerID viewLayerID);
+	void saveInstance(QXmlStreamWriter & streamWriter, bool flipAware);
+	void getLabelGeometry(QDomElement & labelGeometry);
+	void restoreLabel(QDomElement & labelGeometry, ViewLayer::ViewLayerID, bool flipAware);
 	void moveLabel(QPointF newPos, QPointF newOffset);
 	QPointF getOffset();
 	ItemBase * owner();
@@ -66,6 +69,7 @@ public:
 	QString makeSvg(bool blackOnly, double dpi, double printerScale, bool includeTransform);
 	void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
 	void setFontPointSize(double pointSize);
+	bool migrateLabelOffset();
 
 protected:
 	void mousePressEvent(QGraphicsSceneMouseEvent *event);

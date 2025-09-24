@@ -13,12 +13,18 @@
 # along with Fritzing. If not, see <http://www.gnu.org/licenses/>.
 # ********************************************************************/
 HEADERS += \
+	src/mainwindow/fprobeactions.h \
     src/mainwindow/fdockwidget.h \
     src/mainwindow/fritzingwindow.h \
     src/mainwindow/mainwindow.h \
     src/mainwindow/sketchareawidget.h \
+    src/mainwindow/FProbeDropByModuleID.h \
+    src/mainwindow/FProbeKeyPressEvents.h \
+    src/mainwindow/getspice.h \
+    src/mainwindow/fprobefocuswidget.h \
 
 SOURCES += \
+	src/mainwindow/fprobeactions.cpp \
     src/mainwindow/fdockwidget.cpp \
     src/mainwindow/fritzingwindow.cpp \
     src/mainwindow/mainwindow.cpp \
@@ -26,3 +32,7 @@ SOURCES += \
     src/mainwindow/mainwindow_menu.cpp \
     src/mainwindow/mainwindow_dock.cpp \
     src/mainwindow/sketchareawidget.cpp \
+    src/mainwindow/FProbeDropByModuleID.cpp \
+    src/mainwindow/FProbeKeyPressEvents.cpp \
+    src/mainwindow/getspice.cpp \
+    src/mainwindow/fprobefocuswidget.cpp \

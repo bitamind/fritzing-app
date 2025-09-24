@@ -18,13 +18,10 @@
 #
 # ********************************************************************
 
-lessThan(QT_MAJOR_VERSION, 5) {
-    error(Fritzing does not build with Qt 4 or earlier. 5.12 is recommended.)
-}
-
-lessThan(QT_MINOR_VERSION, 9) {
-    error(Fritzing does not build with Qt 5.8 or earlier. 5.12 is recommended.)
-}
+QT_LEAST=6.5.3
+QT_MOST=6.5.10
+!versionAtLeast(QT_VERSION, $${QT_LEAST}):error("Use at least Qt version $${QT_LEAST}")
+!versionAtMost(QT_VERSION, $${QT_MOST}):error("Use at most Qt version $${QT_MOST}")
 
 CONFIG += debug_and_release
 CONFIG += c++17
@@ -90,10 +87,9 @@ macx {
     QMAKE_INFO_PLIST = FritzingInfo.plist
     #DEFINES += QT_NO_DEBUG                # uncomment this for xcode
     LIBS += -lz
-    LIBS += /usr/lib/libz.dylib
-    LIBS += /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation
-    LIBS += /System/Library/Frameworks/Carbon.framework/Carbon
-    LIBS += /System/Library/Frameworks/IOKit.framework/Versions/A/IOKit
+    LIBS += -framework CoreFoundation
+    LIBS += -framework Carbon
+    LIBS += -framework IOKit
     LIBS += -liconv
 }
 unix {
@@ -167,17 +163,17 @@ macx {
     QMAKE_BUNDLE_DATA += FILE_ICONS
 }
 
-QT += concurrent core gui network printsupport serialport sql svg widgets xml
+QT += concurrent core gui network printsupport serialport sql svg widgets xml svgwidgets openglwidgets
 
 RC_FILE = fritzing.rc
 RESOURCES += phoenixresources.qrc
 
-# Disable this if you have (and want) libgit2 dynamically
-LIBGIT_STATIC = true
+include(pri/openssl3.pri)
 include(pri/libgit2detect.pri)
 include(pri/boostdetect.pri)
 include(pri/spicedetect.pri)
 include(pri/quazipdetect.pri)
+include(pri/svgppdetect.pri)
 include(pri/kitchensink.pri)
 include(pri/mainwindow.pri)
 include(pri/partsbinpalette.pri)
@@ -192,14 +188,17 @@ include(pri/dock.pri)
 include(pri/items.pri)
 include(pri/autoroute.pri)
 include(src/dialogs/dialogs.pri)
+include(src/ipc/ipc.pri)
 include(pri/connectors.pri)
 include(pri/infoview.pri)
 include(pri/model.pri)
 include(pri/sketch.pri)
 include(pri/translations.pri)
 include(pri/program.pri)
+include(pri/testing.pri)
 include(pri/simulation.pri)
 include(test/version.pri)
+include(pri/clipper1detect.pri)
 
 TARGET = Fritzing
 TEMPLATE = app

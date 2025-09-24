@@ -46,7 +46,7 @@ class FServer : public QTcpServer
 public:
 	FServer(QObject *parent = 0);
 
-signals:
+Q_SIGNALS:
 	void newConnection(qintptr socketDescriptor);
 
 protected:
@@ -63,7 +63,7 @@ public:
 	void run();
 	void setDone();
 
-signals:
+Q_SIGNALS:
 	void error(QTcpSocket::SocketError socketError);
 	void doCommand(const QString & command, const QString & params, QString & result, int & status);
 
@@ -102,6 +102,12 @@ protected:
 
 ////////////////////////////////////////////////////
 
+class MainWindow;
+
+using ExportFunction = std::function<void(MainWindow*, const QString&, const QDir&)>;
+
+////////////////////////////////////////////////////
+
 
 class FApplication : public QApplication
 {
@@ -125,10 +131,10 @@ public:
 public:
 	static bool spaceBarIsPressed();
 
-signals:
+Q_SIGNALS:
 	void spaceBarIsPressedSignal(bool);
 
-public slots:
+public Q_SLOTS:
 	void preferences();
 	void preferencesAfter();
 	void checkForUpdates();
@@ -160,15 +166,21 @@ protected:
 	void clearModels();
 	bool notify(QObject *receiver, QEvent *e);
 	void initService();
+	void runPortService();
 	void runDRCService();
 	void runGedaService();
 	void runDatabaseService();
 	void runKicadFootprintService();
 	void runKicadSchematicService();
 	void runGerberService();
-	void runGerberServiceAux();
+	QString runGerberServiceAux();
+	QString runBomServiceAux();
+	QString runIpcServiceAux();
+	void runExportAllService();
+	void runExportAllServiceAux();
+	QString runExportAllPlusSvgServiceAux();
 	void runSvgService();
-	void runSvgServiceAux();
+	QString runSvgServiceAux();
 	void runExampleService();
 	void runExampleService(QDir &);
 	QList<class MainWindow *> recoverBackups();
@@ -181,11 +193,11 @@ protected:
 	void updatePrefs(class PrefsDialog & prefsDialog);
 	QList<MainWindow *> orderedTopLevelMainWindows();
 	void cleanFzzs();
-	void initServer();
 	void regeneratePartsDatabaseAux(QDialog * progressDialog);
+	QString runServiceAux(ExportFunction exportFunc, int mainWindowArg = 3);
 
 
-	enum ServiceType {
+	enum class ServiceType {
 		GerberService = 1,
 		GedaService,
 		KicadSchematicService,
@@ -195,6 +207,7 @@ protected:
 		SvgService,
 		PortService,
 		DRCService,
+		ExportAllService,
 		NoService
 	};
 
@@ -215,7 +228,7 @@ protected:
 	QStringList m_externalProcessArgs;
 	QString m_externalProcessName;
 	QString m_externalProcessPath;
-	ServiceType m_serviceType = NoService;
+	ServiceType m_serviceType = ServiceType::NoService;
 	int m_progressIndex = 0;
 	class FSplashScreen * m_splash = nullptr;
 	QString m_outputFolder;
@@ -225,6 +238,7 @@ protected:
 	int m_portNumber = 0;
 	FServer * m_fServer = nullptr;
 	QString m_buildType;
+	QString m_debugLogFilename;
 };
 
 

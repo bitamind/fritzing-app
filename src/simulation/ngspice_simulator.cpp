@@ -28,7 +28,10 @@ along with Fritzing.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <QCoreApplication>
 #include <QStandardPaths>
-#include "../debugdialog.h"
+#include <QFileInfo>
+#include <QDir>
+
+#include "debugdialog.h"
 
 // Macro for serializing variable/function name into a string.
 #define STRFY(name) #name
@@ -37,7 +40,15 @@ along with Fritzing.  If not, see <http://www.gnu.org/licenses/>.
 #define GET_FUNC(func) std::function<decltype(func)>((decltype(func)*) m_handles[STRFY(func)])
 
 // Macro for getting pointer to duplicated string for use in ngspice library function and automatically deleting the duplicate after the function call via unique_ptr.
-#define UNIQ(str) std::unique_ptr<char>(strdup(str.c_str())).get()
+#include <memory>
+#include <string>
+#include <cstring>
+
+#define UNIQ(str) ([&]() {\
+	auto ptr = std::make_unique<char[]>(str.size() + 1);\
+	std::strcpy(ptr.get(), str.c_str());\
+	return ptr.release();\
+})()
 
 NgSpiceSimulator::NgSpiceSimulator()
 	: m_isInitialized(false)
@@ -56,39 +67,60 @@ std::shared_ptr<NgSpiceSimulator> NgSpiceSimulator::getInstance() {
 NgSpiceSimulator::~NgSpiceSimulator() {
 }
 
-void NgSpiceSimulator::init() {
-	if (m_isInitialized) return;
+void NgSpiceSimulator::init()
+{
+	if (m_isInitialized)
+		return;
 
-	m_library.setFileName("ngspice");
-	m_library.load();
+	QString ngspiceDir("invalid");
+	if (!m_library.isLoaded()) {
+		QStringList libPaths = QCoreApplication::libraryPaths();
 
-	QStringList libPaths = QStringList({ QCoreApplication::applicationDirPath()
-			})
-			// TODO Not sure if we can place the library there on macOS
-			+ QStandardPaths::standardLocations(QStandardPaths::DataLocation);
+#ifdef Q_OS_LINUX
+		QString appDir = QCoreApplication::applicationDirPath();
 
-	if( !m_library.isLoaded() ) {         // fallback custom paths
-	#ifdef Q_OS_LINUX
+		if (appDir.endsWith("/usr/bin")) {
+			QString libPath = appDir.left(appDir.length() - 4) + "/lib";
+			if (QDir(libPath).exists()) {
+				libPaths.prepend(libPath);
+			}
+		}
+#endif // Q_OS_LINUX
+
+
+		if (DebugDialog::enabled()) {
+			DebugDialog::debug("Searching for ngspice in the following directories:");
+			for (const auto& path : libPaths) {
+				DebugDialog::debug("  " + path);
+			}
+		}
+#ifdef Q_OS_LINUX
 		const QString libName = "libngspice.so";
-	#elif defined Q_OS_MAC
-		const QString libName = "ngspice.dylib";
-	#elif defined Q_OS_WIN
-		const QString libName = "ngspice-36.dll";
-	#endif
-		for( const auto& path : libPaths ) {
-			QFileInfo library(QString(path + "/" + libName));
-			DebugDialog::debug("Try path " + library.absoluteFilePath());
-			if(!library.canonicalFilePath().isEmpty()) {
+#elif defined Q_OS_MACOS
+		const QString libName = "libngspice.0.dylib";
+#elif defined Q_OS_WIN
+		const QString libName = "ngspice.dll";
+#endif
+		for (const auto& path : libPaths) {
+			QFileInfo library(path + "/" + libName);
+			if (!library.canonicalFilePath().isEmpty()) {
 				m_library.setFileName(library.canonicalFilePath());
 				m_library.load();
-				if( m_library.isLoaded() ) {
+				if (m_library.isLoaded()) {
+					ngspiceDir = library.absolutePath();
 					break;
-				} else {
-					DebugDialog::debug("Couldn't load ngspice " + m_library.errorString());
-					throw std::runtime_error( "Error loading ngspice shared library" );
 				}
 			}
 		}
+		if (!m_library.isLoaded()) {
+			DebugDialog::debug("Error loading ngspice shared library: " + m_library.errorString());
+			throw std::runtime_error("Error loading ngspice shared library: "
+									 + m_library.errorString().toStdString());
+		}
+	} else {
+		QFileInfo loadedLibrary(m_library.fileName());
+		ngspiceDir = loadedLibrary.absolutePath();
+		DebugDialog::debug("ngspice already loaded: " + loadedLibrary.absoluteFilePath());
 	}
 
 	setErrorTitle(std::nullopt);
@@ -97,13 +129,32 @@ void NgSpiceSimulator::init() {
 	for (auto & symbol: symbols) {
 		m_handles[symbol] = (void *) m_library.resolve(symbol.c_str());
 	}
-	std::string previousLocale = setlocale(LC_NUMERIC, nullptr);
-	setlocale(LC_NUMERIC, "C");
+
+	if (localeconv()->decimal_point[0] != '.') {
+		QString errorMsg = "Error: Locale for LC_NUMERIC is not set to 'C'. Current decimal point: " +
+						   QString(localeconv()->decimal_point);
+		DebugDialog::debug(errorMsg);
+		throw std::runtime_error(errorMsg.toStdString());
+	}
+
 	GET_FUNC(ngSpice_Init)(&SendCharFunc, &SendStatFunc, &ControlledExitFunc, nullptr, nullptr, &BGThreadRunningFunc, nullptr);
-	setlocale(LC_NUMERIC, previousLocale.c_str());
 
 	m_isBGThreadRunning = true;
 	m_isInitialized = true;
+
+	QString analogCmPath = ngspiceDir + "/ngspice/analog.cm";
+	if (QFileInfo::exists(analogCmPath)) {
+		DebugDialog::stream() << "Loading codemodel analog.cm from: " << analogCmPath;
+		command("codemodel " + analogCmPath.toStdString());
+	} else {
+		DebugDialog::stream() << "Warning: analog.cm not found at " << analogCmPath;
+	}
+
+}
+
+
+void NgSpiceSimulator::resetIsBGThreadRunning() {
+	m_isBGThreadRunning = true;
 }
 
 bool NgSpiceSimulator::isBGThreadRunning() {
@@ -114,48 +165,48 @@ void NgSpiceSimulator::loadCircuit(const std::string& netList) {
 	std::stringstream stream(netList);
 	std::string component;
 	std::vector<char *> components;
-	std::vector<std::any> garbageCollector;
+	std::vector<std::shared_ptr<char>> garbageCollector;
 
 	while(std::getline(stream, component)) {
-		std::shared_ptr<char> shared(strdup(component.c_str()));
+		auto shared = std::shared_ptr<char>(new char[component.size() + 1],
+											std::default_delete<char[]>());
+		std::strncpy(shared.get(), component.c_str(), component.size());
+		shared.get()[component.size()] = '\0';  // Ensure null termination
 		components.push_back(shared.get());
 		garbageCollector.push_back(shared);
 	}
 	components.push_back(nullptr);
-	std::string previousLocale = setlocale(LC_NUMERIC, nullptr);
-	setlocale(LC_NUMERIC, "C");
 	GET_FUNC(ngSpice_Circ)(components.data());
-	setlocale(LC_NUMERIC, previousLocale.c_str());
+
 }
 
+
+
 void NgSpiceSimulator::command(const std::string& command) {
-	if (!m_isInitialized) {
-		init();
-	}
-	if (!m_isInitialized) {
-		return;
-	}
+	// if (!m_isInitialized) {
+	// 	init();
+	// }
+	// if (!m_isInitialized) {
+	// 	return;
+	// }
 	m_isInitialized = !errorOccured();
 	if (!m_isInitialized) {
 		init();
 	}
-	std::string previousLocale = setlocale(LC_NUMERIC, nullptr);
-	setlocale(LC_NUMERIC, "C");
+
 	GET_FUNC(ngSpice_Command)(UNIQ(command));
-	setlocale(LC_NUMERIC, previousLocale.c_str());
+
 }
 
 std::vector<double> NgSpiceSimulator::getVecInfo(const std::string& vecName) {
-	std::string previousLocale = setlocale(LC_NUMERIC, nullptr);
-	setlocale(LC_NUMERIC, "C");
 	vector_info* vecInfo = GET_FUNC(ngGet_Vec_Info)(UNIQ(vecName));
-	setlocale(LC_NUMERIC, previousLocale.c_str());
 
 	if (!vecInfo) return std::vector<double>();
 
 	std::vector<double> realValues;
 	if (vecInfo->v_realdata) {
-		realValues.push_back(vecInfo->v_realdata[0]);
+		for(int i=0; i<vecInfo->v_length; i++)
+			realValues.push_back(vecInfo->v_realdata[i]);
 		return realValues;
 	}
 

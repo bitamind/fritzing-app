@@ -32,10 +32,10 @@ along with Fritzing.  If not, see <http://www.gnu.org/licenses/>.
 #include "../utils/textutils.h"
 
 
-QString Version::m_majorVersion("0");
-QString Version::m_minorVersion("9");
-QString Version::m_minorSubVersion("10");
-QString Version::m_modifier("b");
+QString Version::m_majorVersion("1");
+QString Version::m_minorVersion("0");
+QString Version::m_minorSubVersion("5");
+QString Version::m_modifier("");
 QString Version::m_gitVersion(GIT_VERSION);
 QString Version::m_gitDate(GIT_DATE);  // want standard ISO form
 QString Version::m_date;
@@ -46,7 +46,6 @@ QStringList Version::m_modifiers;
 
 Version * Version::m_singleton = new Version();
 
-QString Version::FirstVersionWithDetachedUserData = "0.3.1b.05.26.3016";
 
 Version::Version() {
 	if (m_modifiers.count() == 0) {
@@ -162,7 +161,7 @@ void Version::toVersionThing(const QString & candidate, VersionThing & versionTh
 {
 	versionThing.ok = false;
 	QString modString;
-	foreach (QString s, m_modifiers) {
+	Q_FOREACH (QString s, m_modifiers) {
 		modString += s + "|";
 	}
 	modString.chop(1);
@@ -185,9 +184,9 @@ void Version::toVersionThing(const QString & candidate, VersionThing & versionTh
 }
 
 void Version::cleanup() {
-	if (m_singleton) {
+	if (m_singleton != nullptr) {
 		delete m_singleton;
-		m_singleton = NULL;
+		m_singleton = nullptr;
 	}
 }
 

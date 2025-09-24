@@ -31,43 +31,28 @@ along with Fritzing.  If not, see <http://www.gnu.org/licenses/>.
 #include <QApplication>
 
 #include "mainwindow.h"
-#include "../debugdialog.h"
-#include "../waitpushundostack.h"
-#include "../help/aboutbox.h"
-#include "../autoroute/autorouteprogressdialog.h"
-#include "../items/virtualwire.h"
-#include "../items/jumperitem.h"
-#include "../items/via.h"
-#include "../fsvgrenderer.h"
-#include "../items/note.h"
-#include "../items/partfactory.h"
-#include "../eagle/fritzing2eagle.h"
-#include "../sketch/breadboardsketchwidget.h"
-#include "../sketch/schematicsketchwidget.h"
-#include "../sketch/pcbsketchwidget.h"
-#include "../partsbinpalette/binmanager/binmanager.h"
-#include "../utils/expandinglabel.h"
-#include "../infoview/htmlinfoview.h"
-#include "../utils/bendpointaction.h"
-#include "../sketch/fgraphicsscene.h"
-#include "../utils/fileprogressdialog.h"
-#include "../svg/svgfilesplitter.h"
-#include "../version/version.h"
-#include "../help/tipsandtricks.h"
-#include "../dialogs/setcolordialog.h"
-#include "../dialogs/exportparametersdialog.h"
-#include "../utils/folderutils.h"
-#include "../utils/graphicsutils.h"
-#include "../utils/textutils.h"
-#include "../connectors/ercdata.h"
-#include "../items/moduleidnames.h"
-#include "../utils/zoomslider.h"
-#include "../dock/layerpalette.h"
-#include "../program/programwindow.h"
-#include "../utils/autoclosemessagebox.h"
-#include "../svg/gerbergenerator.h"
-#include "../processeventblocker.h"
-#include "../items/propertydef.h"
+#include "debugdialog.h"
+#include "waitpushundostack.h"
+#include "processeventblocker.h"
+
+#include "connectors/ercdata.h"
+#include "dialogs/exportparametersdialog.h"
+#include "eagle/fritzing2eagle.h"
+#include "items/partfactory.h"
+#include "infoview/htmlinfoview.h"
+#include "ipc/ipc_d_356.h"
+#include "program/programwindow.h"
+#include "sketch/schematicsketchwidget.h"
+#include "sketch/pcbsketchwidget.h"
+#include "svg/svgfilesplitter.h"
+#include "svg/gerbergenerator.h"
+#include "utils/fileprogressdialog.h"
+#include "utils/folderutils.h"
+#include "utils/graphicsutils.h"
+#include "utils/textutils.h"
+#include "utils/fmessagebox.h"
+#include "version/version.h"
+
 
 static QString eagleActionType = ".eagle";
 static QString gerberActionType = ".gerber";
@@ -76,6 +61,8 @@ static QString pdfActionType = ".pdf";
 static QString pngActionType = ".png";
 static QString svgActionType = ".svg";
 static QString bomActionType = ".html";
+static QString bomCsvActionType = ".csv";
+static QString ipcActionType = ".ipc";
 static QString netlistActionType = ".xml";
 static QString spiceNetlistActionType = ".cir";
 
@@ -83,27 +70,27 @@ static QHash<QString, QPrinter::OutputFormat> filePrintFormats;
 static QHash<QString, QImage::Format> fileExportFormats;
 static QHash<QString, QString> fileExtFormats;
 
-static QRegExp AaCc("[aAcC]");
-static QRegExp LabelNumber("([^\\d]+)(.*)");
+static QRegularExpression AaCc("[aAcC]");
+static QRegularExpression LabelNumber("([^\\d]+)(.*)");
 
-static const double InchesPerMeter = 39.3700787;
+static constexpr double InchesPerMeter = 39.3700787;
 
 ////////////////////////////////////////////////////////
 
 bool sortPartList(ItemBase * b1, ItemBase * b2) {
 	bool result = b1->instanceTitle().toLower() < b2->instanceTitle().toLower();
 
-	int ix1 = LabelNumber.indexIn(b1->instanceTitle());
-	if (ix1 < 0) return result;
+	QRegularExpressionMatch match;
+	if (!b1->instanceTitle().contains(LabelNumber, &match)) return result;
 
-	QString label1 = LabelNumber.cap(1);
-	QString number1 = LabelNumber.cap(2);
+	QString label1 = match.captured(1);
+	QString number1 = match.captured(2);
 
-	int ix2 = LabelNumber.indexIn(b2->instanceTitle());
-	if (ix2 < 0) return result;
+	match = QRegularExpressionMatch();
+	if (!b2->instanceTitle().contains(LabelNumber, &match)) return result;
 
-	QString label2 = LabelNumber.cap(1);
-	QString number2 = LabelNumber.cap(2);
+	QString label2 = match.captured(1);
+	QString number2 = match.captured(2);
 	if (label2.compare(label1, Qt::CaseInsensitive) != 0) return result;
 
 	bool ok;
@@ -120,7 +107,7 @@ bool sortPartList(ItemBase * b1, ItemBase * b2) {
 
 void MainWindow::initNames()
 {
-	OtherKnownExtensions << jpgActionType << pdfActionType << pngActionType << svgActionType << bomActionType << netlistActionType << spiceNetlistActionType;
+	OtherKnownExtensions << jpgActionType << pdfActionType << pngActionType << svgActionType << bomActionType << bomCsvActionType << ipcActionType << netlistActionType << spiceNetlistActionType;
 
 	filePrintFormats[pdfActionType] = QPrinter::PdfFormat;
 
@@ -132,6 +119,8 @@ void MainWindow::initNames()
 	fileExtFormats[jpgActionType] = tr("JPEG Image (*.jpg)");
 	fileExtFormats[svgActionType] = tr("SVG Image (*.svg)");
 	fileExtFormats[bomActionType] = tr("BoM Text File (*.html)");
+	fileExtFormats[bomCsvActionType] = tr("BoM CSV File (*.csv)");
+	fileExtFormats[ipcActionType] = tr("IPC-D-356 File (*.ipc)");
 
 	QSettings settings;
 	AutosaveEnabled = settings.value("autosaveEnabled", QString("%1").arg(AutosaveEnabled)).toBool();
@@ -143,12 +132,12 @@ void MainWindow::print() {
 		m_programView->print();
 	}
 
-	if (m_currentGraphicsView == NULL) return;
+	if (m_currentGraphicsView == nullptr) return;
 
 #ifndef QT_NO_PRINTER
 	QPrinter printer(QPrinter::HighResolution);
 
-	QPrintDialog *printDialog = new QPrintDialog(&printer, this);
+	auto *printDialog = new QPrintDialog(&printer, this);
 	if (printDialog->exec() == QDialog::Accepted) {
 		m_statusBar->showMessage(tr("Printing..."));
 		printAux(printer, true, true);
@@ -160,7 +149,7 @@ void MainWindow::print() {
 }
 
 void MainWindow::exportEtchable() {
-	if (sender() == NULL) return;
+	if (sender() == nullptr) return;
 
 	bool wantSvg = sender()->property("svg").toBool();
 	exportEtchable(!wantSvg, wantSvg);
@@ -176,14 +165,14 @@ void MainWindow::exportEtchable(bool wantPDF, bool wantSVG)
 		                      tr("Your sketch does not have a board yet! Please add a PCB in order to export etchable."));
 		return;
 	}
-	if (board == NULL) {
+	if (board == nullptr) {
 		QMessageBox::critical(this, tr("Fritzing"),
 		                      tr("Etchable export can only handle one board at a time--please select the board you want to export."));
 		return;
 	}
 
 	RoutingStatus routingStatus;
-	m_pcbGraphicsView->updateRoutingStatus(NULL, routingStatus, true);
+	m_pcbGraphicsView->updateRoutingStatus(nullptr, routingStatus, true);
 	if (routingStatus.m_connectorsLeftToRoute > 0) {
 		QMessageBox msgBox(this);
 		msgBox.setWindowModality(Qt::WindowModal);
@@ -282,15 +271,19 @@ void MainWindow::exportEtchable(bool wantPDF, bool wantSVG)
 			QString svg = m_pcbGraphicsView->renderToSVG(renderThing, board, viewLayerIDs);
 			massageOutput(svg, doMask, doSilk, doPaste, maskTop, maskBottom, fileName, board, GraphicsUtils::IllustratorDPI, viewLayerIDs);
 			QString merged = mergeBoardSvg(svg, board, GraphicsUtils::IllustratorDPI, false, viewLayerIDs);
-			TextUtils::writeUtf8(fileName.arg(""), merged);
+			if (!merged.isEmpty()) {
+				TextUtils::writeUtf8(fileName.arg(""), merged);
+			}
 			merged = mergeBoardSvg(svg, board, GraphicsUtils::IllustratorDPI, true, viewLayerIDs);
-			TextUtils::writeUtf8(fileName.arg("_mirror"), merged);
+			if (!merged.isEmpty()) {
+				TextUtils::writeUtf8(fileName.arg("_mirror"), merged);
+			}
 		}
 		else {
 			QString svg;
 			QList<bool> flips;
 			flips << false << true;
-			foreach (bool flip, flips) {
+			Q_FOREACH (bool flip, flips) {
 				QString mirror = flip ? "_mirror" : "";
 				QPrinter printer(QPrinter::HighResolution);
 				printer.setOutputFormat(filePrintFormats[fileExt]);
@@ -332,10 +325,10 @@ void MainWindow::exportEtchable(bool wantPDF, bool wantSVG)
 			}
 		}
 		if (doMask) {
-			m_pcbGraphicsView->restoreCopperLogoItems(copperLogoItems);
+			m_pcbGraphicsView->restoreItemVisibility(copperLogoItems);
 		}
 		if (doPaste) {
-			m_pcbGraphicsView->restoreCopperLogoItems(holes);
+			m_pcbGraphicsView->restoreItemVisibility(holes);
 		}
 
 	}
@@ -436,17 +429,17 @@ QString MainWindow::mergeBoardSvg(QString & svg, ItemBase * board, int res, bool
 }
 
 QString MainWindow::getBoardSvg(ItemBase * board, int res,  LayerList & viewLayerIDs) {
-	if (board == NULL) return ___emptyString___;
+	if (board == nullptr) return ___emptyString___;
 
 	board = board->layerKinChief();
 	QList<ItemBase *> boardLayers;
 	boardLayers << board;
-	foreach (ItemBase * lk, board->layerKin()) {
+	Q_FOREACH (ItemBase * lk, board->layerKin()) {
 		boardLayers << lk;
 	}
 
 	bool gotOne = false;
-	foreach (ItemBase * boardLayer, boardLayers) {
+	Q_FOREACH (ItemBase * boardLayer, boardLayers) {
 		if (viewLayerIDs.contains(boardLayer->viewLayerID())) {
 			gotOne = true;
 			break;
@@ -458,7 +451,7 @@ QString MainWindow::getBoardSvg(ItemBase * board, int res,  LayerList & viewLaye
 	m_pcbGraphicsView->setIgnoreSelectionChangeEvents(true);
 
 	QList<QGraphicsItem *> items = m_pcbGraphicsView->scene()->selectedItems();
-	foreach (QGraphicsItem * item, items) {
+	Q_FOREACH (QGraphicsItem * item, items) {
 		item->setSelected(false);
 	}
 	board->setSelected(true);
@@ -471,7 +464,7 @@ QString MainWindow::getBoardSvg(ItemBase * board, int res,  LayerList & viewLaye
 	renderThing.renderBlocker = false;
 	QString svg = m_pcbGraphicsView->renderToSVG(renderThing, board, viewLayerIDs);
 	board->setSelected(false);
-	foreach (QGraphicsItem * item, items) {
+	Q_FOREACH (QGraphicsItem * item, items) {
 		item->setSelected(true);
 	}
 
@@ -482,8 +475,8 @@ QString MainWindow::getBoardSvg(ItemBase * board, int res,  LayerList & viewLaye
 
 
 void MainWindow::doExport() {
-	QAction * action = qobject_cast<QAction *>(sender());
-	if (action == NULL) return;
+	auto * action = qobject_cast<QAction *>(sender());
+	if (action == nullptr) return;
 
 	QString actionType = action->data().toString();
 	QString path = defaultSaveFolder();
@@ -500,6 +493,16 @@ void MainWindow::doExport() {
 
 	if (actionType.compare(bomActionType) == 0) {
 		exportBOM();
+		return;
+	}
+
+	if (actionType.compare(bomCsvActionType) == 0) {
+		exportBOM_CSV();
+		return;
+	}
+
+	if (actionType.compare(ipcActionType) == 0) {
+		exportIPC_D_356A_interactive();
 		return;
 	}
 
@@ -558,7 +561,7 @@ void MainWindow::doExport() {
 
 void MainWindow::exportAux(QString fileName, QImage::Format format, int quality, bool removeBackground)
 {
-	if (m_currentGraphicsView == NULL) return;
+	if (m_currentGraphicsView == nullptr) return;
 
         int dpi = 3 * GraphicsUtils::SVGDPI;
 
@@ -606,7 +609,7 @@ void MainWindow::exportAux(QString fileName, QImage::Format format, int quality,
 }
 
 void MainWindow::printAux(QPrinter &printer, bool removeBackground, bool paginate) {
-	if (m_currentGraphicsView == NULL) return;
+	if (m_currentGraphicsView == nullptr) return;
 
 	int res = printer.resolution();
 	double scale2 = res / GraphicsUtils::SVGDPI;
@@ -716,12 +719,12 @@ QRectF MainWindow::prepareExport(bool removeBackground)
 {
 	//Deselect all the items that are selected before creating the image
 	m_selectedItems = m_currentGraphicsView->scene()->selectedItems();
-	foreach(QGraphicsItem *item, m_selectedItems) {
+	Q_FOREACH(QGraphicsItem *item, m_selectedItems) {
 		item->setSelected(false);
 	}
 
 	QRectF itemsBoundingRect;
-	foreach(QGraphicsItem *item,  m_currentGraphicsView->scene()->items()) {
+	Q_FOREACH(QGraphicsItem *item,  m_currentGraphicsView->scene()->items()) {
 		if (!item->isVisible()) continue;
 
 		item->update();
@@ -752,7 +755,7 @@ QRectF MainWindow::prepareExport(bool removeBackground)
 
 void MainWindow::afterExport(bool removeBackground)
 {
-	foreach(QGraphicsItem *item, m_selectedItems) {
+	Q_FOREACH(QGraphicsItem *item, m_selectedItems) {
 		item->setSelected(true);
 	}
 
@@ -767,21 +770,36 @@ void MainWindow::afterExport(bool removeBackground)
 
 
 bool MainWindow::saveAsAux(const QString & fileName) {
-	QFile file(fileName);
-	if (!file.open(QFile::WriteOnly | QFile::Text)) {
-		QMessageBox::warning(this, tr("Fritzing"),
-		                     tr("Cannot write file %1:\n%2.")
-		                     .arg(fileName)
-		                     .arg(file.errorString()));
-		return false;
+	QFileInfo fileInfo(fileName);
+
+	if (fileInfo.exists()) {
+		if (!fileInfo.isWritable()) {
+			FMessageBox::warning(this, tr("Fritzing"),
+					     tr("Cannot write file %1:\n%2.")
+									 .arg(fileName, tr("File is not writable")));
+			return false;
+		}
+	} else {
+		// If the file does not exist, check if we can create it
+		QFile file(fileName);
+		if (!file.open(QFile::WriteOnly | QFile::Text)) {
+			FMessageBox::warning(this, tr("Fritzing"),
+					     tr("Cannot write file %1:\n%2.")
+					     .arg(fileName, file.errorString()));
+			return false;
+		}
+		file.close();
 	}
 
-	file.close();
-
+	bool readOnly = m_readOnly;
 	setReadOnly(false);
 	//FritzingWindow::saveAsAux(fileName);
 
-	saveAsAuxAux(fileName);
+	bool ret = saveAsAuxAux(fileName);
+	if (!ret) {
+		setReadOnly(readOnly);
+		return false;
+	}
 	m_autosaveNeeded = false;
 	undoStackCleanChanged(true);
 
@@ -804,7 +822,7 @@ bool MainWindow::saveAsAux(const QString & fileName) {
 	return true;
 }
 
-void MainWindow::saveAsAuxAux(const QString & fileName) {
+bool MainWindow::saveAsAuxAux(const QString & fileName) {
 	QApplication::setOverrideCursor(Qt::WaitCursor);
 
 	connectStartSave(true);
@@ -814,32 +832,34 @@ void MainWindow::saveAsAuxAux(const QString & fileName) {
 	QDir dir(this->m_fzzFolder);
 	QStringList nameFilters("*" + FritzingSketchExtension);
 	QFileInfoList fileList = dir.entryInfoList(nameFilters, QDir::Files | QDir::NoSymLinks);
-	foreach (QFileInfo fileInfo, fileList) {
+	Q_FOREACH (QFileInfo fileInfo, fileList) {
 		QFile file(fileInfo.absoluteFilePath());
 		file.remove();
 	}
 
 	QString fzName = dir.absoluteFilePath(QFileInfo(fileName).completeBaseName() + FritzingSketchExtension);
-	m_sketchModel->save(fzName, false);
+	bool result = m_sketchModel->save(fzName, false);
 
-	saveLastTabList();
-
-	saveAsShareable(fileName, false);
+	if (result) {
+		saveLastTabList();
+		result = saveAsShareable(fileName, false);
+	}
 
 	connectStartSave(false);
 
 	QApplication::restoreOverrideCursor();
+
+	return result;
 }
 
-
-void MainWindow::saveAsShareable(const QString & path, bool saveModel)
+bool MainWindow::saveAsShareable(const QString & path, bool saveModel)
 {
 	QString filename = path;
 	QHash<QString, ModelPart *> saveParts;
-	foreach (QGraphicsItem * item, m_pcbGraphicsView->scene()->items()) {
-		ItemBase * itemBase = dynamic_cast<ItemBase *>(item);
-		if (itemBase == NULL) continue;
-		if (itemBase->modelPart() == NULL) {
+	Q_FOREACH (QGraphicsItem * item, m_pcbGraphicsView->scene()->items()) {
+		auto * itemBase = dynamic_cast<ItemBase *>(item);
+		if (itemBase == nullptr) continue;
+		if (itemBase->modelPart() == nullptr) {
 			continue;
 		}
 		if (itemBase->modelPart()->isCore()) continue;
@@ -847,15 +867,16 @@ void MainWindow::saveAsShareable(const QString & path, bool saveModel)
 
 		saveParts.insert(itemBase->moduleID(), itemBase->modelPart());
 	}
+	bool result = false;
 	if(alreadyHasExtension(filename, FritzingSketchExtension)) {
-		saveBundledNonAtomicEntity(filename, FritzingSketchExtension, this, saveParts.values(), false, m_fzzFolder, saveModel, true);
+		result = saveBundledNonAtomicEntity(filename, FritzingSketchExtension, this, saveParts.values(), false, m_fzzFolder, saveModel, true);
 	} else {
-		saveBundledNonAtomicEntity(filename, FritzingBundleExtension, this, saveParts.values(), false, m_fzzFolder, saveModel, true);
+		result = saveBundledNonAtomicEntity(filename, FritzingBundleExtension, this, saveParts.values(), false, m_fzzFolder, saveModel, true);
 	}
-
+	return result;
 }
 
-void MainWindow::saveBundledNonAtomicEntity(QString &filename, const QString &extension, Bundler *bundler, const QList<ModelPart*> &partsToSave, bool askForFilename, const QString & destFolderPath, bool saveModel, bool deleteLeftovers) {
+bool MainWindow::saveBundledNonAtomicEntity(QString &filename, const QString &extension, Bundler *bundler, const QList<ModelPart*> &partsToSave, bool askForFilename, const QString & destFolderPath, bool saveModel, bool deleteLeftovers) {
 	bool result;
 	QStringList names;
 
@@ -865,7 +886,10 @@ void MainWindow::saveBundledNonAtomicEntity(QString &filename, const QString &ex
 	                          ? FolderUtils::getSaveFileName(this, tr("Specify a file name"), path, tr("Fritzing (*%1)").arg(extension), &fileExt)
 	                          : filename;
 
-	if (bundledFileName.isEmpty()) return; // Cancel pressed
+	if (bundledFileName.isEmpty()) {
+		DebugDialog::debug(QString("File save dialog was cancelled."));
+		return false; // Cancel pressed
+	}
 
 	FileProgressDialog progress("Saving...", 0, this);
 
@@ -878,12 +902,12 @@ void MainWindow::saveBundledNonAtomicEntity(QString &filename, const QString &ex
 	QDir destFolder;
 	QString dirToRemove;
 	if (destFolderPath.isEmpty()) {
-		destFolder = QDir::temp();
+		destFolder.setPath(QDir::temp().path());
 		FolderUtils::createFolderAndCdIntoIt(destFolder, TextUtils::getRandText());
 		dirToRemove = destFolder.path();
 	}
 	else {
-		destFolder = QDir(destFolderPath);
+		destFolder.setPath(destFolderPath);
 	}
 
 	QString aux = QFileInfo(bundledFileName).fileName();
@@ -916,7 +940,7 @@ void MainWindow::saveBundledNonAtomicEntity(QString &filename, const QString &ex
 		filename = prevFileName;
 	}
 
-	foreach(ModelPart* mp, partsToSave) {
+	Q_FOREACH(ModelPart* mp, partsToSave) {
 		names.append(saveBundledAux(mp, destFolder));
 	}
 
@@ -925,7 +949,7 @@ void MainWindow::saveBundledNonAtomicEntity(QString &filename, const QString &ex
 		nameFilters << ("*" + FritzingPartExtension) << "*.svg";
 		QDir dir(destFolder);
 		QStringList fileList = dir.entryList(nameFilters, QDir::Files | QDir::NoSymLinks);
-		foreach (QString fileName, fileList) {
+		Q_FOREACH (QString fileName, fileList) {
 			if (!names.contains(fileName)) {
 				QFile::remove(dir.absoluteFilePath(fileName));
 			}
@@ -941,16 +965,18 @@ void MainWindow::saveBundledNonAtomicEntity(QString &filename, const QString &ex
 	}
 
 	if(!result) {
-		QMessageBox::warning(
-		    this,
-		    tr("Fritzing"),
-		    tr("Unable to export %1 as shareable").arg(bundledFileName)
+		FMessageBox::warning(
+			this,
+			tr("Fritzing"),
+			tr("Unable to export %1 as shareable.").arg(bundledFileName) +
+				tr("Saving failed. Please check if home and destionation directory are writeable and not full.")
 		);
 	}
 
 	if (!dirToRemove.isEmpty()) {
 		FolderUtils::rmdir(dirToRemove);
 	}
+	return result;
 }
 
 
@@ -992,8 +1018,18 @@ void MainWindow::createExportActions() {
 
 	m_exportBomAct = new QAction(tr("List of parts (&Bill of Materials)..."), this);
 	m_exportBomAct->setData(bomActionType);
-	m_exportBomAct->setStatusTip(tr("Save a Bill of Materials (BoM)/Shopping List as text"));
+	m_exportBomAct->setStatusTip(tr("Save a Bill of Materials (BoM)/Shopping List as html"));
 	connect(m_exportBomAct, SIGNAL(triggered()), this, SLOT(doExport()));
+
+	m_exportBomCsvAct = new QAction(tr("List of parts (&Bill of Materials) as CSV"), this);
+	m_exportBomCsvAct->setData(bomCsvActionType);
+	m_exportBomCsvAct->setStatusTip(tr("Save a Bill of Materials (BoM)/Shopping List as text"));
+	connect(m_exportBomCsvAct, SIGNAL(triggered()), this, SLOT(doExport()));
+
+	m_exportIpcAct = new QAction(tr("IPC-D-356A netlist"), this);
+	m_exportIpcAct->setData(ipcActionType);
+	m_exportIpcAct->setStatusTip(tr("Save a netlist in IPC-D-356A format"));
+	connect(m_exportIpcAct, SIGNAL(triggered()), this, SLOT(doExport()));
 
 	m_exportNetlistAct = new QAction(tr("XML Netlist..."), this);
 	m_exportNetlistAct->setData(netlistActionType);
@@ -1051,7 +1087,8 @@ void MainWindow::exportToEagle() {
 
 	QMessageBox::information(this, tr("Fritzing"), text);
 
-	Fritzing2Eagle eagle = Fritzing2Eagle(m_pcbGraphicsView);
+	auto eagle = Fritzing2Eagle(m_pcbGraphicsView);
+	(void) eagle;
 
 	/*
 	QList <ItemBase*> partList;
@@ -1119,8 +1156,8 @@ void MainWindow::exportSvg(double res, bool selectedItems, bool flatten, const Q
 {
 	FileProgressDialog * fileProgressDialog = exportProgress();
 	LayerList viewLayerIDs;
-	foreach (ViewLayer * viewLayer, m_currentGraphicsView->viewLayers()) {
-		if (viewLayer == NULL) continue;
+	Q_FOREACH (ViewLayer * viewLayer, m_currentGraphicsView->viewLayers()) {
+		if (viewLayer == nullptr) continue;
 		if (!viewLayer->visible()) continue;
 
 		viewLayerIDs << viewLayer->viewLayerID();
@@ -1133,9 +1170,10 @@ void MainWindow::exportSvg(double res, bool selectedItems, bool flatten, const Q
 	renderThing.selectedItems = selectedItems;
 	renderThing.hideTerminalPoints = true;
 	renderThing.renderBlocker = false;
-	QString svg = m_currentGraphicsView->renderToSVG(renderThing, NULL, viewLayerIDs);
+	QString svg = m_currentGraphicsView->renderToSVGForSVGExport(renderThing, nullptr, viewLayerIDs);
 	if (svg.isEmpty()) {
 		// tell the user something reasonable
+		delete fileProgressDialog;
 		return;
 	}
 
@@ -1173,11 +1211,64 @@ void MainWindow::exportSvgWatermark(QString & svg, double res)
 	svg = TextUtils::mergeSvg(newSvg, svg, "", false);
 }
 
+QString MainWindow::getExportBOM_CSV() {
+
+	QList <ItemBase*> partList;
+	std::map<QString, int> descrs;
+
+	QString separator = ";";
+	std::list<QString> properties({"mn", "mpn", "part number"});
+
+	m_currentGraphicsView->collectParts(partList);
+	std::sort(partList.begin(), partList.end(), sortPartList);
+
+	QString propertiess;
+	for ( const QString & property: properties) {
+		propertiess += property + separator;
+	}
+	propertiess += "\n";
+
+	QString assembly = "Label" + separator + "Part Type" + separator + propertiess;
+
+	for (auto&& itemBase: partList) {
+		if (itemBase->itemType() != ModelPart::Part) continue;
+		QStringList keys;
+		QString desc = itemBase->title() + separator;
+		for ( const QString & property: properties) {
+			QString prop = itemBase->prop(property);
+			desc += prop.replace('\t', ' ') + separator;
+		}
+		++descrs[desc];
+		assembly += itemBase->instanceTitle() + separator + desc + "\n";
+	}
+
+	QString shopping = "Amount" + separator + "Part Type" + separator + propertiess;
+
+	for(const auto & [key, value] : descrs) {
+		shopping += QString::number(value) + separator + key + "\n";
+	}
+
+	QString bom = assembly + "\n" + shopping;
+	return bom;
+}
+
+void MainWindow::exportBOM_CSV() {
+	QString bom = getExportBOM_CSV();
+	save_text_file(
+				bom,
+				bomCsvActionType,
+				tr("Export Bill of Materials (BoM) as CSV"), "bom_csv",
+				tr("Unable to save BOM file, but the text is on the clipboard.")
+				   );
+
+	return;
+}
+
 void MainWindow::exportBOM() {
 
 	// bail out if something is wrong
 	// TODO: show an error in QMessageBox
-	if (m_currentWidget == NULL) {
+	if (m_currentWidget == nullptr) {
 		return;
 	}
 
@@ -1207,12 +1298,12 @@ void MainWindow::exportBOM() {
 
 	m_currentGraphicsView->collectParts(partList);
 
-	qSort(partList.begin(), partList.end(), sortPartList);
+	std::sort(partList.begin(), partList.end(), sortPartList);
 
-	foreach (ItemBase * itemBase, partList) {
+	Q_FOREACH (ItemBase * itemBase, partList) {
 		if (itemBase->itemType() != ModelPart::Part) continue;
 		QStringList keys;
-		QHash<QString, QString> properties = HtmlInfoView::getPartProperties(itemBase->modelPart(), itemBase, false, keys);
+//		QHash<QString, QString> properties = HtmlInfoView::getPartProperties(itemBase->modelPart(), itemBase, false, keys);
 		QString desc = itemBase->prop("mn") + "%%%%%" + itemBase->prop("mpn") + "%%%%%" + itemBase->title() + "%%%%%" + getBomProps(itemBase);  // keeps different parts separate if there are no properties
 		descrs.insert(desc, itemBase);
 		if (!descrList.contains(desc)) {
@@ -1221,39 +1312,51 @@ void MainWindow::exportBOM() {
 	}
 
 	QString assemblyString;
-	foreach (ItemBase * itemBase, partList) {
+	Q_FOREACH (ItemBase * itemBase, partList) {
 		if (itemBase->itemType() != ModelPart::Part) continue;
 		QStringList keys;
-		QHash<QString, QString> properties = HtmlInfoView::getPartProperties(itemBase->modelPart(), itemBase, false, keys);
+//		QHash<QString, QString> properties = HtmlInfoView::getPartProperties(itemBase->modelPart(), itemBase, false, keys);
 		assemblyString += bomRowTemplate.arg(itemBase->instanceTitle()).arg(itemBase->prop("mn")).arg(itemBase->prop("mpn")).arg(itemBase->title()).arg(getBomProps(itemBase));
 	}
 
 	QString shoppingListString;
-	foreach (QString descr, descrList) {
+	Q_FOREACH (QString descr, descrList) {
 		QList<ItemBase *> itemBases = descrs.values(descr);
 		QStringList split = descr.split("%%%%%");
 		shoppingListString += bomRowTemplate.arg(itemBases.count()).arg(split.at(0)).arg(split.at(1)).arg(split.at(2)).arg(split.at(3));
 	}
 
-	QString bom = bomTemplate
-	              .arg("Fritzing Bill of Materials")
-	              .arg(QFileInfo(m_fwFilename).fileName())
-	              .arg(m_fwFilename)
-	              .arg(QDateTime::currentDateTime().toString("dddd, MMMM d yyyy, hh:mm:ss"))
-	              .arg(assemblyString)
-	              .arg(shoppingListString)
-	              .arg(QString("%1.%2.%3").arg(Version::majorVersion()).arg(Version::minorVersion()).arg(Version::minorSubVersion()));
+	QString bom = bomTemplate.arg(
+				  "Fritzing Bill of Materials"
+				, QFileInfo(m_fwFilename).fileName()
+				, m_fwFilename
+				, QDateTime::currentDateTime().toString("dddd, MMMM d yyyy, hh:mm:ss")
+				, assemblyString
+				, shoppingListString
+				, QString("%1.%2.%3").arg(Version::majorVersion(), Version::minorVersion(), Version::minorSubVersion()));
 
+	save_text_file(
+				bom,
+				bomActionType,
+				tr("Export Bill of Materials (BoM)..."), "bom",
+				tr("Unable to save BOM file, but the text is on the clipboard.")
+				   );
+
+	return;
+}
+
+void MainWindow::save_text_file(QString text, QString actionType, QString dialogTitle, QString differentiator, QString errorMessage)
+{
 
 	QString path = defaultSaveFolder();
 
 	QString fileExt;
-	QString extFmt = fileExtFormats.value(bomActionType);
-	QString fname = path+"/"+constructFileName("bom", bomActionType);
-	DebugDialog::debug(QString("fname %1\n%2").arg(fname).arg(extFmt));
+	QString extFmt = fileExtFormats.value(actionType);
+	QString fname = path+"/"+constructFileName(differentiator, actionType);
+	DebugDialog::debug(QString("fname %1\n%2").arg(fname, extFmt));
 
 	QString fileName = FolderUtils::getSaveFileName(this,
-	                   tr("Export Bill of Materials (BoM)..."),
+					   dialogTitle,
 	                   fname,
 	                   extFmt,
 	                   &fileExt
@@ -1265,12 +1368,12 @@ void MainWindow::exportBOM() {
 
 	FileProgressDialog * fileProgressDialog = exportProgress();
 	DebugDialog::debug(fileExt+" selected to export");
-	if(!alreadyHasExtension(fileName, bomActionType)) {
-		fileName += bomActionType;
+	if(!alreadyHasExtension(fileName, actionType)) {
+		fileName += actionType;
 	}
 
-	if (!TextUtils::writeUtf8(fileName, bom)) {
-		QMessageBox::warning(this, tr("Fritzing"), tr("Unable to save BOM file, but the text is on the clipboard."));
+	if (!TextUtils::writeUtf8(fileName, text)) {
+		QMessageBox::warning(this, tr("Fritzing"), errorMessage);
 	}
 
 	QFileInfo info(fileName);
@@ -1280,13 +1383,14 @@ void MainWindow::exportBOM() {
 
 	QClipboard *clipboard = QApplication::clipboard();
 	if (clipboard) {
-		clipboard->setText(bom);
+		clipboard->setText(text);
 	}
 	delete fileProgressDialog;
 }
 
+
 void MainWindow::exportSpiceNetlist() {
-	if (m_schematicGraphicsView == NULL) return;
+	if (m_schematicGraphicsView == nullptr) return;
 
 	// examples:
 	// http://www.allaboutcircuits.com/vol_5/chpt_7/8.html
@@ -1351,18 +1455,17 @@ QString MainWindow::getSpiceNetlist(QString simulationName) {
  */
 QString MainWindow::getSpiceNetlist(QString simulationName, QList< QList<class ConnectorItem *>* >& netList, QSet<class ItemBase *>& itemBases) {
 	QString output = simulationName + "\n";
-	static QRegExp curlies("\\{([^\\{\\}]*)\\}");
 	QHash<ConnectorItem *, int> indexer;
-	this->m_schematicGraphicsView->collectAllNets(indexer, netList, true, false);
+	this->m_schematicGraphicsView->collectAllNets(indexer, netList, true, false, true);
 
 
 	//DebugDialog::debug("_______________");
 
-	QList<ConnectorItem *> * ground = NULL;
-	foreach (QList<ConnectorItem *> * net, netList) {
+	QList<ConnectorItem *> * ground = nullptr;
+	Q_FOREACH (QList<ConnectorItem *> * net, netList) {
 		if (net->count() < 2) continue;
 
-		foreach (ConnectorItem * ci, *net) {
+		Q_FOREACH (ConnectorItem * ci, *net) {
 			//ci->debugInfo("net");
 			if (ci->isGrounded()) {
 				ground = net;
@@ -1374,6 +1477,7 @@ QString MainWindow::getSpiceNetlist(QString simulationName, QList< QList<class C
 	}
 
 	//If the circuit is built in the BB view, there is no ground. Then, try to find a negative terminal from a power supply as ground
+	//First we are only looking for negative power supply terminals that are connected to something else.
 	if (!ground){
 		DebugDialog::debug("Netlist exporter: Trying to identify the negative connection of a power supply as ground");
 		foreach (QList<ConnectorItem *> * net, netList) {
@@ -1387,6 +1491,34 @@ QString MainWindow::getSpiceNetlist(QString simulationName, QList< QList<class C
 			}
 		}
 	}
+
+	// If we found no negative power supply terminals that are connected to something else, we will also check for those that are not connected.
+	if (!ground){
+		DebugDialog::debug("Netlist exporter: Trying to identify unconnected negative power supply terminals as ground");
+		foreach (QList<ConnectorItem *> * net, netList) {
+			if (ground) break;
+			foreach (ConnectorItem * ci, *net) {
+				if (ci->connectorSharedName().compare("-", Qt::CaseInsensitive) == 0) {
+					ground = net;
+					break;
+				}
+			}
+		}
+	}
+    //If we have still not found a ground, it is because the negative power supply pin is not connected
+    //Repeat the same loop as before, but without forcing to be connected to other elements
+    if (!ground){
+        DebugDialog::debug("Netlist exporter: Trying to identify an isolated negative connection of a power supply as ground");
+        foreach (QList<ConnectorItem *> * net, netList) {
+            if (ground) break;
+            foreach (ConnectorItem * ci, *net) {
+                if (ci->connectorSharedName().compare("-", Qt::CaseInsensitive) == 0) {
+                    ground = net;
+                    break;
+                }
+            }
+        }
+    }
 
 	if (ground) {
 		DebugDialog::debug("Netlist exporter: ground found");
@@ -1403,10 +1535,10 @@ QString MainWindow::getSpiceNetlist(QString simulationName, QList< QList<class C
 		}
 	}
 
-	foreach (QList<ConnectorItem *> * net, netList) {
+	Q_FOREACH (QList<ConnectorItem *> * net, netList) {
 		if (net->count() < 2) continue;
 
-		foreach (ConnectorItem * ci, *net) {
+		Q_FOREACH (ConnectorItem * ci, *net) {
 			ci->debugInfo("net");
 		}
 		DebugDialog::debug("_______________");
@@ -1415,86 +1547,16 @@ QString MainWindow::getSpiceNetlist(QString simulationName, QList< QList<class C
 	//DebugDialog::debug("_______________");
 	//DebugDialog::debug("_______________");
 
-	foreach (ItemBase * itemBase, itemBases) {
-		QString spice = itemBase->spice();
-		if (spice.isEmpty()) continue;
-		int pos = 0;
-		while (true) {
-			int ix = curlies.indexIn(spice, pos);
-			if (ix < 0) break;
-
-			QString token = curlies.cap(1).toLower();
-			QString replacement;
-			if (token == "instancetitle") {
-				replacement = itemBase->instanceTitle();
-				if (ix > 0 && replacement.at(0).toLower() == spice.at(ix - 1).toLower()) {
-					// if the type letter is repeated
-					replacement = replacement.mid(1);
-				}
-				replacement.replace(" ", "_");
-			}
-			else if (token.startsWith("net ")) {
-				QString cname = token.mid(4).trimmed();
-				foreach (ConnectorItem * ci, itemBase->cachedConnectorItems()) {
-					if (ci->connectorSharedID().toLower() == cname) {
-						int ix = -1;
-						foreach (QList<ConnectorItem *> * net, netList) {
-							ix++;
-							if (net->contains(ci)) break;
-						}
-
-						replacement = QString::number(ix);
-						break;
-					}
-				}
-			}
-			else {
-				//Find the symbol of this property
-				QString symbol;
-				QHash<PropertyDef *, QString> propertyDefs;
-				PropertyDefMaster::initPropertyDefs(itemBase->modelPart(), propertyDefs);
-				foreach (PropertyDef * propertyDef, propertyDefs.keys()) {
-					if (token.compare(propertyDef->name, Qt::CaseInsensitive) == 0) {
-						symbol = propertyDef->symbol;
-						break;
-					}
-				}
-				//Find the value of the property
-				QVariant variant = itemBase->modelPart()->localProp(token);
-				if (variant.isNull()) {
-					replacement = itemBase->modelPart()->properties().value(token, "");
-					if(replacement.isEmpty()) {
-						//Leave it, probably is a brace expresion for the spice simulator
-						pos = ix + 1;
-						replacement = curlies.cap(0);
-						continue;
-					}
-				}
-				else {
-					replacement = variant.toString();
-				}
-				//Remove the symbol, if any. It is not mandatory:
-				//(Ngspice ignores letters immediately following a number that are not scale factors)
-				if (!symbol.isEmpty()) {
-					replacement.replace(symbol, "");
-				}
-				//Ngspice does not differenciate from m and M prefixes, u shuld be used for micro
-				replacement.replace("M", "Meg");
-				replacement.replace(TextUtils::MicroSymbol, "u");
-			}
-
-			spice.replace(ix, curlies.cap(0).count(), replacement);
-			DebugDialog::debug("spice " + spice);
-		}
-
-		output += spice;
+	Q_FOREACH (ItemBase * itemBase, itemBases) {
+		if (itemBase->spice().isEmpty()) continue;
+		output += GetSpice::getSpice(itemBase, netList);
 	}
 
 	output += "\n";
 
 	// remove redundant models
 	QStringList models;
-	foreach (ItemBase * itemBase, itemBases) {
+	Q_FOREACH (ItemBase * itemBase, itemBases) {
 		QString spiceModel = itemBase->spiceModel();
 		if (spiceModel.isEmpty()) continue;
 		if (models.contains(spiceModel, Qt::CaseInsensitive)) continue;
@@ -1502,7 +1564,7 @@ QString MainWindow::getSpiceNetlist(QString simulationName, QList< QList<class C
 		models.append(spiceModel);
 	}
 
-	foreach (QString model, models) {
+	Q_FOREACH (QString model, models) {
 		output += model;
 		output += "\n";
 	}
@@ -1515,7 +1577,7 @@ QString MainWindow::getSpiceNetlist(QString simulationName, QList< QList<class C
 		paths << QDir(FolderUtils::getUserPartsPath());
 
 		QString output2;
-		foreach (QString line, lines) {
+		Q_FOREACH (QString line, lines) {
 			int ix = line.toLower().indexOf(incl);
 			if (ix < 0) {
 				output2 += line + "\n";
@@ -1527,8 +1589,8 @@ QString MainWindow::getSpiceNetlist(QString simulationName, QList< QList<class C
 			QString filename = temp.trimmed();
 
 			bool gotOne = false;
-			foreach (QDir dir, paths) {
-				foreach (QString folder, ModelPart::possibleFolders()) {
+			Q_FOREACH (QDir dir, paths) {
+				Q_FOREACH (QString folder, ModelPart::possibleFolders()) {
 					QDir sub(dir);
 					sub.cd(folder);
 					sub.cd("spicemodels");
@@ -1550,24 +1612,67 @@ QString MainWindow::getSpiceNetlist(QString simulationName, QList< QList<class C
 		output = output2;
 	}
 
-	output += ".options savecurrents\n";
+	output += ".option savecurrents\n";
+	output += ".option interp\n";
 	output += ".OP\n";
 	output += "*.TRAN 1ms 100ms\n";
 	output += "* .AC DEC 100 100 1MEG\n";
 	output += ".END";
 
-	QClipboard *clipboard = QApplication::clipboard();
-	if (clipboard) {
-		clipboard->setText(output);
-	}
-
 	return output;
 }
+
+QString MainWindow::exportIPC_D_356A() {
+	int boardCount;
+	ItemBase * board = m_pcbGraphicsView->findSelectedBoard(boardCount);
+
+	QString basename = QFileInfo(m_fwFilename).fileName();
+
+	ViewGeometry::WireFlags skipFlags = ViewGeometry::NoFlag;
+	const bool skipBuses = true;
+
+	QHash<ConnectorItem *, int> indexer;
+	QList< QList<ConnectorItem *>* > netList;
+	this->m_pcbGraphicsView->collectAllNets(indexer, netList, true, m_pcbGraphicsView->boardLayers() > 1, false, skipFlags, skipBuses);
+
+	QString ipc = getExportIPC_D_356A(board, basename, netList);
+	return ipc;
+}
+
+void MainWindow::exportIPC_D_356A_interactive() {
+	int boardCount;
+	ItemBase * board = m_pcbGraphicsView->findSelectedBoard(boardCount);
+
+	// barf an error if there's no board
+	if (boardCount == 0) {
+		QMessageBox::critical(this, tr("Fritzing"),
+					  tr("Your sketch does not have a board yet!  Please add a PCB in order to export to IPC netlist."));
+		return;
+	}
+	if (board == nullptr) {
+		QMessageBox::critical(this, tr("Fritzing"),
+					  tr("IPC netlist export can only handle one board at a time--please select the board you want to export."));
+		return;
+	}
+
+	QString ipc = exportIPC_D_356A();
+	save_text_file(
+				ipc,
+				ipcActionType,
+				tr("Export IPC-D-356..."),
+				"d356a",
+				tr("Unable to save IPC file.") + tr("But the content was copied to the clipboard.")
+				);
+
+	return;
+
+}
+
 
 void MainWindow::exportNetlist() {
 	QHash<ConnectorItem *, int> indexer;
 	QList< QList<ConnectorItem *>* > netList;
-	this->m_currentGraphicsView->collectAllNets(indexer, netList, true, m_currentGraphicsView->boardLayers() > 1);
+	this->m_currentGraphicsView->collectAllNets(indexer, netList, true, m_currentGraphicsView->boardLayers() > 1, false);
 
 	QDomDocument doc;
 	doc.setContent(QString("<?xml version='1.0' encoding='UTF-8'?>\n") + TextUtils::CreatedWithFritzingXmlComment);
@@ -1579,11 +1684,11 @@ void MainWindow::exportNetlist() {
 	// TODO: filter out 'ignore' connectors
 
 	QList< QList<ConnectorItem *>* > deleteNets;
-	foreach (QList<ConnectorItem *> * net, netList) {
+	Q_FOREACH (QList<ConnectorItem *> * net, netList) {
 		QList<ConnectorItem *> deleteItems;
-		foreach (ConnectorItem * connectorItem, *net) {
+		Q_FOREACH (ConnectorItem * connectorItem, *net) {
 			ErcData * ercData = connectorItem->connectorSharedErcData();
-			if (ercData == NULL) continue;
+			if (ercData == nullptr) continue;
 
 			if (ercData->ignore() == ErcData::Always) {
 				deleteItems.append(connectorItem);
@@ -1593,7 +1698,7 @@ void MainWindow::exportNetlist() {
 			}
 		}
 
-		foreach (ConnectorItem * connectorItem, deleteItems) {
+		Q_FOREACH (ConnectorItem * connectorItem, deleteItems) {
 			net->removeOne(connectorItem);
 		}
 		if (net->count() == 0) {
@@ -1601,14 +1706,14 @@ void MainWindow::exportNetlist() {
 		}
 	}
 
-	foreach (QList<ConnectorItem *> * net, deleteNets) {
+	Q_FOREACH (QList<ConnectorItem *> * net, deleteNets) {
 		netList.removeOne(net);
 	}
 
-	foreach (QList<ConnectorItem *> * net, netList) {
+	Q_FOREACH (QList<ConnectorItem *> * net, netList) {
 		QDomElement netElement = doc.createElement("net");
 		netlist.appendChild(netElement);
-		foreach (ConnectorItem * connectorItem, *net) {
+		Q_FOREACH (ConnectorItem * connectorItem, *net) {
 			QDomElement connector = doc.createElement("connector");
 			netElement.appendChild(connector);
 			connector.setAttribute("id", connectorItem->connectorSharedID());
@@ -1629,45 +1734,20 @@ void MainWindow::exportNetlist() {
 		}
 	}
 
-	foreach (QList<ConnectorItem *> * net, netList) {
+	Q_FOREACH (QList<ConnectorItem *> * net, netList) {
 		delete net;
 	}
 	netList.clear();
 
-	QString path = defaultSaveFolder();
+	save_text_file(
+				doc.toString(),
+				netlistActionType,
+				tr("Export Netlist..."),
+				"netlist",
+				tr("Unable to save netlist file.") + tr("But the content was copied to the clipboard.")
+				);
 
-	QString fileExt;
-	QString extFmt = fileExtFormats.value(netlistActionType);
-	QString fname = path + "/" +constructFileName("netlist", netlistActionType);
-	//DebugDialog::debug(QString("fname %1\n%2").arg(fname).arg(extFmt));
-
-	QString fileName = FolderUtils::getSaveFileName(this,
-	                   tr("Export Netlist..."),
-	                   fname,
-	                   extFmt,
-	                   &fileExt
-	                                               );
-
-	if (fileName.isEmpty()) {
-		return; //Cancel pressed
-	}
-
-	FileProgressDialog * fileProgressDialog = exportProgress();
-	//DebugDialog::debug(fileExt + " selected to export");
-	if(!alreadyHasExtension(fileName, netlistActionType)) {
-		fileName += netlistActionType;
-	}
-
-	QFile fp( fileName );
-	fp.open(QIODevice::WriteOnly);
-	fp.write(doc.toByteArray());
-	fp.close();
-
-	QClipboard *clipboard = QApplication::clipboard();
-	if (clipboard) {
-		clipboard->setText(doc.toByteArray());
-	}
-	delete fileProgressDialog;
+	return;
 }
 
 FileProgressDialog * MainWindow::exportProgress() {
@@ -1684,18 +1764,18 @@ void MainWindow::exportNormalizedFlattenedSVG() {
 
 QString MainWindow::getBomProps(ItemBase * itemBase)
 {
-	if (itemBase == NULL) return "";
+	if (itemBase == nullptr) return "";
 
 	QStringList keys;
 	QHash<QString, QString> properties = HtmlInfoView::getPartProperties(itemBase->modelPart(), itemBase, false, keys);
 	QString pString;
-	foreach (QString key, keys) {
+	Q_FOREACH (QString key, keys) {
 		if (key.compare("family") == 0) continue;
 
 		QString value = properties.value(key);
 
 		QWidget widget;
-		QWidget * resultWidget = NULL;
+		QWidget * resultWidget = nullptr;
 		QString resultKey, resultValue;
 		bool hide;
 		itemBase->collectExtraInfo(&widget, properties.value("family"), key, value, false, resultKey, resultValue, resultWidget, hide);
@@ -1722,7 +1802,7 @@ void MainWindow::exportToGerber() {
 		                      tr("Your sketch does not have a board yet!  Please add a PCB in order to export to Gerber."));
 		return;
 	}
-	if (board == NULL) {
+	if (board == nullptr) {
 		QMessageBox::critical(this, tr("Fritzing"),
 		                      tr("Gerber export can only handle one board at a time--please select the board you want to export."));
 		return;
@@ -1738,8 +1818,6 @@ void MainWindow::exportToGerber() {
 	FileProgressDialog * fileProgressDialog = exportProgress();
 
 	FolderUtils::setOpenSaveFolder(exportDir);
-	m_pcbGraphicsView->saveLayerVisibility();
-	m_pcbGraphicsView->setAllLayersVisible(true);
 
 	QFileInfo info(m_fwFilename);
 	QString prefix = info.completeBaseName();
@@ -1748,7 +1826,6 @@ void MainWindow::exportToGerber() {
 	}
 	GerberGenerator::exportToGerber(prefix, exportDir, board, m_pcbGraphicsView, true);
 
-	m_pcbGraphicsView->restoreLayerVisibility();
 	m_statusBar->showMessage(tr("Sketch exported to Gerber"), 2000);
 
 	delete fileProgressDialog;
@@ -1780,8 +1857,10 @@ void MainWindow::massageOutput(QString & svg, bool doMask, bool doSilk, bool doP
 	}
 	else if (doSilk) {
 		QString use = (fileName.contains("bottom")) ? maskBottom : maskTop;
-		use = TextUtils::expandAndFill(use, "white", GerberGenerator::MaskClearanceMils * 2 * dpi / 1000);
-		svg = TextUtils::mergeSvg(svg, use, "", false);
+		if (!use.isEmpty()) {
+			use = TextUtils::expandAndFill(use, "white", GerberGenerator::MaskClearanceMils * 2 * dpi / 1000);
+			svg = TextUtils::mergeSvg(svg, use, "", false);
+		}
 	}
 	else if (doMask) {
 		if (fileName.contains("bottom")) maskBottom = svg;
@@ -1791,12 +1870,12 @@ void MainWindow::massageOutput(QString & svg, bool doMask, bool doSilk, bool doP
 }
 
 void MainWindow::dumpAllParts() {
-	if (m_currentGraphicsView == NULL) return;
+	if (m_currentGraphicsView == nullptr) return;
 
 	QList<ItemBase *> already;
-	foreach (QGraphicsItem * item, m_currentGraphicsView->items()) {
-		ItemBase * ib = dynamic_cast<ItemBase *>(item);
-		if (ib == NULL) continue;
+	Q_FOREACH (QGraphicsItem * item, m_currentGraphicsView->items()) {
+		auto * ib = dynamic_cast<ItemBase *>(item);
+		if (ib == nullptr) continue;
 
 		ItemBase * chief = ib->layerKinChief();
 		if (already.contains(chief)) continue;
@@ -1806,12 +1885,12 @@ void MainWindow::dumpAllParts() {
 		QList<ItemBase *> itemBases;
 		itemBases << chief;
 		itemBases.append(chief->layerKin());
-		foreach (ItemBase * itemBase, itemBases) {
+		Q_FOREACH (ItemBase * itemBase, itemBases) {
 			itemBase->debugInfo("");
-			foreach (ConnectorItem * connectorItem, itemBase->cachedConnectorItems()) {
+			Q_FOREACH (ConnectorItem * connectorItem, itemBase->cachedConnectorItems()) {
 				if (connectorItem->connectionsCount() > 0) {
 					connectorItem->debugInfo("\t");
-					foreach (ConnectorItem * to, connectorItem->connectedToItems()) {
+					Q_FOREACH (ConnectorItem * to, connectorItem->connectedToItems()) {
 						to->debugInfo("\t\t");
 					}
 				}

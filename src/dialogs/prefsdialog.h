@@ -33,6 +33,8 @@ along with Fritzing.  If not, see <http://www.gnu.org/licenses/>.
 #include <QPointer>
 
 #include "../program/platform.h"
+#include "../mainwindow/mainwindow.h"
+#include "../project_properties.h"
 
 struct ViewInfoThing
 {
@@ -54,7 +56,7 @@ public:
 	bool cleared();
 	QHash<QString, QString> & settings();
 	QHash<QString, QString> & tempSettings();
-	void initLayout(QFileInfoList & languages, QList<Platform *> platforms, bool);
+	void initLayout(QFileInfoList & languages, QList<Platform *> platforms, MainWindow * mainWindow);
 	void initViewInfo(int index, const QString & viewName, const QString & shortName, bool curvy);
 
 protected:
@@ -64,17 +66,18 @@ protected:
 	QWidget * createZoomerForm();
 	QWidget * createAutosaveForm();
 	QWidget *createProgrammerForm(QList<Platform *> platforms);
-	QWidget *createBetaFeaturesForm(bool);
+	QWidget *createGerberBetaFeaturesForm();
+	QWidget *createProjectPropertiesForm();
 	void updateWheelText();
 	void initGeneral(QWidget * general, QFileInfoList & languages);
 	void initBreadboard(QWidget *, ViewInfoThing *);
 	void initSchematic(QWidget *, ViewInfoThing *);
 	void initPCB(QWidget *, ViewInfoThing *);
 	void initCode(QWidget *widget, QList<Platform *> platforms);
-	void initBetaFeatures(QWidget *widget, bool);
+	void initBetaFeatures(QWidget *widget);
 	QWidget * createCurvyForm(ViewInfoThing *);
 
-protected slots:
+protected Q_SLOTS:
 	void changeLanguage(int);
 	void clear();
 	void setConnectedColor();
@@ -84,7 +87,10 @@ protected slots:
 	void changeAutosavePeriod(int);
 	void curvyChanged();
 	void chooseProgrammer();
-	void toggleSimulator(bool);
+    void setSimulationTimeStepMode(const bool &timeStepMode);
+    void setSimulationNumberOfSteps(const QString &numberOfSteps);
+    void setSimulationTimeStep(const QString &timeStep);
+    void setSimulationAnimationTime(const QString &animationTime);
 
 protected:
 	QPointer<QTabWidget> m_tabWidget;
@@ -94,7 +100,7 @@ protected:
 	QPointer<QWidget> m_pcb;
 	QPointer<QWidget> m_code;
 	QPointer<QWidget> m_beta_features;
-	QPointer<QLabel> m_wheelLabel[3];
+	QPointer<QLabel> m_wheelLabel;
 	QPointer<QLabel> m_connectedColorLabel;
 	QPointer<QLabel> m_unconnectedColorLabel;
 	QList<Platform *> m_platforms;
@@ -106,6 +112,8 @@ protected:
 	bool m_cleared = false;
 	int m_wheelMapping = 0;
 	ViewInfoThing m_viewInfoThings[3];
+	MainWindow * m_mainWindow;
+	QSharedPointer<ProjectProperties> m_projectProperties;
 };
 
 #endif

@@ -22,7 +22,6 @@ along with Fritzing.  If not, see <http://www.gnu.org/licenses/>.
 #include "../debugdialog.h"
 #include "../sketch/pcbsketchwidget.h"
 #include "../utils/graphicsutils.h"
-#include "../utils/folderutils.h"
 #include "../connectors/connectoritem.h"
 
 #include <QFile>
@@ -30,7 +29,6 @@ along with Fritzing.  If not, see <http://www.gnu.org/licenses/>.
 #include <QDomElement>
 #include <QDir>
 #include <qmath.h>
-#include <limits>
 
 static QString CheckerOutputPath;
 static QSet<QString> CheckerFileNames;
@@ -39,7 +37,7 @@ int Checker::checkText(MainWindow * mainWindow, bool displayMessage) {
 	QHash<QString, QString> svgHash;
 	QList<ItemBase *> missing;
 
-	foreach (QGraphicsItem * item, mainWindow->pcbView()->scene()->items()) {
+	Q_FOREACH (QGraphicsItem * item, mainWindow->pcbView()->scene()->items()) {
 		ItemBase * itemBase = dynamic_cast<ItemBase *>(item);
 		if (itemBase == NULL) continue;
 		if (!itemBase->isEverVisible()) continue;
@@ -87,12 +85,12 @@ int Checker::checkText(MainWindow * mainWindow, bool displayMessage) {
 
 int Checker::checkDonuts(MainWindow * mainWindow, bool displayMessage) {
 	QList<ConnectorItem *> donuts;
-	foreach (QGraphicsItem * item, mainWindow->pcbView()->scene()->items()) {
+	Q_FOREACH (QGraphicsItem * item, mainWindow->pcbView()->scene()->items()) {
 		ConnectorItem * connectorItem = dynamic_cast<ConnectorItem *>(item);
 		if (connectorItem == NULL) continue;
 		if (!connectorItem->attachedTo()->isEverVisible()) continue;
 
-		if (connectorItem->isPath() && connectorItem->getCrossLayerConnectorItem()) {  // && connectorItem->radius() == 0
+		if (connectorItem->isPath() && (connectorItem->getCrossLayerConnectorItem() != nullptr)) {  // && connectorItem->radius() == 0
 			connectorItem->debugInfo("possible donut");
 			connectorItem->attachedTo()->debugInfo("\t");
 			donuts << connectorItem;
@@ -102,7 +100,7 @@ int Checker::checkDonuts(MainWindow * mainWindow, bool displayMessage) {
 	if (displayMessage && donuts.count() > 0) {
 		mainWindow->pcbView()->selectAllItems(false, false);
 		QSet<ItemBase *> itemBases;
-		foreach (ConnectorItem * connectorItem, donuts) {
+		Q_FOREACH (ConnectorItem * connectorItem, donuts) {
 			itemBases.insert(connectorItem->attachedTo());
 		}
 		mainWindow->pcbView()->selectItems(itemBases.values());
@@ -124,7 +122,9 @@ void Checker::writeCheckerOutput(const QString & message) {
 		QFile file(CheckerOutputPath);
 		if (file.open(QFile::Append)) {
 			QTextStream out(&file);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
 			out.setCodec("UTF-8");
+#endif
 			out << message << "\n";
 			file.close();
 		}

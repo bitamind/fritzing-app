@@ -25,11 +25,11 @@ along with Fritzing.  If not, see <http://www.gnu.org/licenses/>.
 
 
 #include "updatedialog.h"
-#include "version.h"
 #include "versionchecker.h"
 #include "modfiledialog.h"
 #include "../debugdialog.h"
 
+#include <QDir>
 #include <QVBoxLayout>
 #include <QPushButton>
 #include <QSettings>
@@ -40,12 +40,12 @@ along with Fritzing.  If not, see <http://www.gnu.org/licenses/>.
 #include <QDesktopServices>
 
 
-static const int s_maxProgress = 1000;
+static constexpr int s_maxProgress = 1000;
 static QString sUpdatePartsMessage;
 
 UpdateDialog::UpdateDialog(QWidget *parent) : QDialog(parent)
 {
-	m_versionChecker = NULL;
+	m_versionChecker = nullptr;
 	m_doQuit = false;
 	m_doClose = true;
 
@@ -58,7 +58,7 @@ UpdateDialog::UpdateDialog(QWidget *parent) : QDialog(parent)
 		                         "You can also update later via the <i>Help &rarr; Check for Updates</i> menu.</p>");
 	}
 
-	QVBoxLayout * vLayout = new QVBoxLayout(this);
+	auto * vLayout = new QVBoxLayout(this);
 
 	m_feedbackLabel = new QLabel();
 	m_feedbackLabel->setTextInteractionFlags(Qt::LinksAccessibleByMouse | Qt::LinksAccessibleByKeyboard);
@@ -84,30 +84,30 @@ UpdateDialog::UpdateDialog(QWidget *parent) : QDialog(parent)
 }
 
 UpdateDialog::~UpdateDialog() {
-	if (m_versionChecker) {
+	if (m_versionChecker != nullptr) {
 		delete m_versionChecker;
 	}
 }
 
 bool UpdateDialog::setAvailableReleases(const QList<AvailableRelease *> & availableReleases)
 {
-	AvailableRelease * interimRelease = NULL;
-	AvailableRelease * mainRelease = NULL;
+	AvailableRelease * interimRelease = nullptr;
+	AvailableRelease * mainRelease = nullptr;
 
-	foreach (AvailableRelease * availableRelease, availableReleases) {
-		if (availableRelease->interim && (interimRelease == NULL)) {
+	Q_FOREACH (AvailableRelease * availableRelease, availableReleases) {
+		if (availableRelease->interim && (interimRelease == nullptr)) {
 			interimRelease = availableRelease;
 			continue;
 		}
-		if (!availableRelease->interim && (mainRelease == NULL)) {
+		if (!availableRelease->interim && (mainRelease == nullptr)) {
 			mainRelease = availableRelease;
 			continue;
 		}
 
-		if (mainRelease && interimRelease) break;
+		if ((mainRelease != nullptr) && (interimRelease != nullptr)) break;
 	}
 
-	if (mainRelease == NULL && interimRelease == NULL) {
+	if (mainRelease == nullptr && interimRelease == nullptr) {
 		if (m_atUserRequest) {
 			m_feedbackLabel->setText(tr("<p>No new versions found.</p>"));
 		}
@@ -125,12 +125,12 @@ bool UpdateDialog::setAvailableReleases(const QList<AvailableRelease *> & availa
 
 	QSettings settings;
 	m_updateUrl = "";
-	if (mainRelease) {
+	if (mainRelease != nullptr) {
 		text += genTable(tr("A new main release is available for downloading:"), mainRelease);
 		settings.setValue("lastMainVersionChecked", mainRelease->versionString);
 		m_updateUrl = mainRelease->link;
 	}
-	if (interimRelease) {
+	if (interimRelease != nullptr) {
 		text += genTable(tr("A new interim release is available for downloading:"), interimRelease);
 		settings.setValue("lastInterimVersionChecked", interimRelease->versionString);
 		if (m_updateUrl.isEmpty()) {
@@ -148,10 +148,10 @@ bool UpdateDialog::setAvailableReleases(const QList<AvailableRelease *> & availa
 
 void UpdateDialog::setVersionChecker(VersionChecker * versionChecker)
 {
-	if (m_versionChecker) {
+	if (m_versionChecker != nullptr) {
 		m_versionChecker->stop();
 		delete m_versionChecker;
-		m_versionChecker = NULL;
+		m_versionChecker = nullptr;
 	}
 
 	m_progressBar->setVisible(false);
@@ -188,7 +188,7 @@ void UpdateDialog::releasesAvailableSlot() {
 				this->exec();
 			}
 		} else {
-			emit enableAgainSignal(true);
+			Q_EMIT enableAgainSignal(true);
 		}
 	}
 }
@@ -218,7 +218,7 @@ void UpdateDialog::partsAvailableSlot() {
 		if (!this->isVisible()) {
 			// we are doing the parts check silently, so enable manual update by sending signal
 			// otherwise manual update is enabled by closing the dialog
-			emit enableAgainSignal(true);
+			Q_EMIT enableAgainSignal(true);
 		}
 		return;
 	}
@@ -240,7 +240,7 @@ void UpdateDialog::partsAvailableSlot() {
 		if (!this->isVisible()) {
 			// we are doing the parts check silently, so enable manual update by sending signal
 			// otherwise manual update is enabled by closing the dialog
-			emit enableAgainSignal(true);
+			Q_EMIT enableAgainSignal(true);
 		}
 		return;
 	}
@@ -273,7 +273,7 @@ void UpdateDialog::partsAvailableSlot() {
 			}
 			// we are doing the parts check silently, so enable manual update by sending signal
 			// otherwise manual update is enabled by closing the dialog
-			emit enableAgainSignal(true);
+			Q_EMIT enableAgainSignal(true);
 			return;
 		}
 
@@ -282,7 +282,7 @@ void UpdateDialog::partsAvailableSlot() {
 	break;
 	}
 
-	m_buttonBox->setEnabled(true);	
+	m_buttonBox->setEnabled(true);
 	if (!this->isVisible()) {
 		this->exec();
 	}
@@ -297,7 +297,7 @@ void UpdateDialog::onCleanRepo(ModFileDialog * modFileDialog) {
 
 		// we are doing the parts check silently, so enable manual update by sending signal
 		// otherwise manual update is enabled by closing the dialog
-		emit enableAgainSignal(true);
+		Q_EMIT enableAgainSignal(true);
 		modFileDialog->done(QDialog::Rejected);
 		return;
 	}
@@ -321,7 +321,7 @@ void UpdateDialog::handleError()
 	DebugDialog::debug("handle error");
 	m_feedbackLabel->setText(tr("<p>Sorry, unable to retrieve update info</p>"));
 	m_buttonBox->button(QDialogButtonBox::Cancel)->setVisible(true);
-	emit enableAgainSignal(true);
+	Q_EMIT enableAgainSignal(true);
 	DebugDialog::debug("handle error done");
 }
 
@@ -337,7 +337,7 @@ void UpdateDialog::handlePartsError(const QString & error) {
 
 	DebugDialog::debug("handle error " + error);
 	m_feedbackLabel->setText(tr("<p>Sorry, unable to retrieve parts update info</p>"));
-	emit enableAgainSignal(true);
+	Q_EMIT enableAgainSignal(true);
 }
 
 void UpdateDialog::setAtUserRequest(bool atUserRequest)
@@ -348,13 +348,13 @@ void UpdateDialog::setAtUserRequest(bool atUserRequest)
 void UpdateDialog::stopClose() {
 	m_versionChecker->stop();
 	this->close();
-	emit enableAgainSignal(true);
+	Q_EMIT enableAgainSignal(true);
 }
 
 void UpdateDialog::openInBrowser()
 {
 	QDesktopServices::openUrl(m_updateUrl);
-	emit enableAgainSignal(true);
+	Q_EMIT enableAgainSignal(true);
 	this->close();
 }
 
@@ -422,7 +422,7 @@ void UpdateDialog::updateParts() {
 	m_progressBar->setValue(0);
 	m_progressBar->setMinimum(0);
 	m_progressBar->setMaximum(0);
-	emit installNewParts();
+	Q_EMIT installNewParts();
 }
 
 void UpdateDialog::updateProgress(double progress) {
